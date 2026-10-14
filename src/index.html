@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: blob: data: mediastream:; img-src 'self' file: blob: data: *; media-src 'self' file: blob: data: mediastream: *; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src * file: blob: data:;">
+<title>VLC Redesign</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="theme-dark">
+  <header id="titlebar">
+    <div class="tb-left">
+      <button class="logo" id="btnLogo" title="Home"></button>
+      <button class="icon-btn" id="btnMenu" title="Menu" data-ico="dots"></button>
+      <button class="icon-btn" id="btnLib" title="Library sidebar" data-ico="sidebar"></button>
+      <span class="sep"></span>
+      <button class="icon-btn" id="btnBack" title="Back" aria-label="Back" data-ico="back" disabled></button>
+      <button class="icon-btn" id="btnForward" title="Forward" aria-label="Forward" data-ico="forward" disabled></button>
+      <button class="crumb" id="btnFolder" title="Open library"><i data-ico="folder"></i><span id="folderName">Library</span></button>
+    </div>
+    <div class="tb-title" id="title">VLC Redesign</div>
+    <div class="tb-right">
+      <button class="icon-btn" id="btnPip" title="Picture in picture" data-ico="pip"></button>
+      <button class="icon-btn" id="btnFs" title="Fullscreen (F)" data-ico="fullscreen"></button>
+      <span class="sep"></span>
+      <button class="win-btn" id="wMin" data-ico="min"></button>
+      <button class="win-btn" id="wMax" data-ico="max"></button>
+      <button class="win-btn close" id="wClose" data-ico="close"></button>
+    </div>
+  </header>
+
+  <div id="main">
+    <aside id="libPanel" class="panel left hidden"></aside>
+    <section id="stage">
+      <div id="library" class="hidden"></div>
+      <div id="player">
+        <video id="video" preload="auto"></video>
+        <div id="artwork" class="hidden"><img class="art-cover" src="assets/audio-fallback.jpg" alt="Album cover"><div class="art-title"></div></div>
+        <div id="subs"></div>
+        <div id="metaCard" class="hidden"></div>
+        <div id="osd"></div>
+        <div id="bigState"></div>
+        <div id="dropHint" class="hidden"><i data-ico="plus"></i><span>Drop to add to queue</span></div>
+      </div>
+    </section>
+    <aside id="rightPanel" class="panel right hidden"></aside>
+  </div>
+
+  <div id="subTimeline" class="hidden"><canvas id="subCanvas"></canvas></div>
+  <footer id="controls">
+    <div class="c-left" id="ctlLeft"></div>
+    <div class="c-seek">
+      <span class="time" id="tCur">00:00:00</span>
+      <div id="seek"><canvas id="wave"></canvas><div class="seek-played"></div><div class="seek-marks"></div><div class="seek-handle"></div><div id="thumb" class="hidden"><canvas width="224" height="126"></canvas><span></span></div></div>
+      <span class="time" id="tDur">00:00:00</span>
+    </div>
+    <div class="c-right" id="ctlRight"></div>
+  </footer>
+  <div id="menuLayer"></div>
+  <div id="modalLayer"></div>
+</div>
+<script src="icons.js"></script>
+<script src="core.js"></script>
+<script src="media.js"></script>
+<script src="player.js"></script>
+<script src="panels.js"></script>
+<script src="library.js"></script>
+<script src="dialogs.js"></script>
+</body>
+</html>
