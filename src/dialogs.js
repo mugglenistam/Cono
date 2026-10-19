@@ -194,7 +194,7 @@ function settingsDialog(startCat) {
   modal({ title: 'Settings', body: root, wide: true });
   const mb = $('.modal-b:last-of-type', $('#modalLayer').lastChild); if (mb) mb.style.padding = '0';
 }
-function aboutBody() { return h('div', { class: 'sec' }, h('div', { class: 'logo', style: { width: '56px', height: '56px' }, html: APP_LOGO }), h('h3', { style: { margin: '12px 0 4px', fontSize: '18px' } }, 'Cono'), h('div', { class: 'kbd-hint' }, 'Version 1.0 · A modern audio and video player inspired by the “I Redesigned VLC After 25 Years” design study. Not affiliated with VideoLAN.'), h('div', { class: 'warn', style: { marginTop: '14px' } }, 'Playback uses Chromium’s media engine: MP4/H.264, WebM, MKV (H.264/VP9), MP3, FLAC, AAC, Opus, WAV, OGG. Formats such as AVI, WMV or DTS audio need a native engine like libVLC.')); }
+function aboutBody() { return h('div', { class: 'sec' }, h('div', { class: 'logo', style: { width: '56px', height: '56px' }, html: APP_LOGO }), h('h3', { style: { margin: '12px 0 4px', fontSize: '18px' } }, 'Cono'), h('div', { class: 'kbd-hint' }, 'Version 1.0.1 · A modern audio and video player inspired by the “I Redesigned VLC After 25 Years” design study. Not affiliated with VideoLAN.'), h('div', { class: 'warn', style: { marginTop: '14px' } }, 'Playback uses Chromium’s media engine: MP4/H.264, WebM, MKV (H.264/VP9), MP3, FLAC, AAC, Opus, WAV, OGG. Formats such as AVI, WMV or DTS audio need a native engine like libVLC.')); }
 function aboutDialog() { modal({ title: 'About', body: aboutBody(), buttons: [{ label: 'Close', primary: true }] }); }
 
 /* ---------- onboarding ---------- */

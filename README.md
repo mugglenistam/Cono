@@ -12,18 +12,18 @@ A modern audio and video player for Windows, with a customizable interface, audi
 
 ![Windows x64](https://img.shields.io/badge/platform-Windows_x64-0078D4)
 ![Electron](https://img.shields.io/badge/built_with-Electron-47848F)
-![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-A855F7)
+![Version 1.0.1](https://img.shields.io/badge/version-1.0.1-A855F7)
 
 </div>
 
 ## Download
 
-The current release is **Cono 1.0.0 for 64-bit Windows**. Choose the download that fits how you want to use the app.
+The current release is **Cono 1.0.1 for 64-bit Windows**. Choose the download that fits how you want to use the app.
 
 | Download | Best for | How to use |
 | --- | --- | --- |
-| [**Windows installer**](https://github.com/mugglenistam/Cono/releases/download/v1.0.0/Cono-Setup-1.0.0-x64.exe) | Regular use on your computer | Run the setup wizard and choose an installation folder. |
-| [**Portable executable**](https://github.com/mugglenistam/Cono/releases/download/v1.0.0/Cono-Portable-1.0.0-x64.exe) | Running without installation | Save the executable in a folder or on a USB drive, then launch it directly. |
+| [**Windows installer**](https://github.com/mugglenistam/Cono/releases/download/v1.0.1/Cono-Setup-1.0.1-x64.exe) | Regular use on your computer | Run the setup wizard and choose an installation folder. |
+| [**Portable executable**](https://github.com/mugglenistam/Cono/releases/download/v1.0.1/Cono-Portable-1.0.1-x64.exe) | Running without installation | Save the executable in a folder or on a USB drive, then launch it directly. |
 
 You only need one version. Both contain the same player features.
 
@@ -169,8 +169,8 @@ The generated files are placed in `dist/`:
 
 ```text
 dist/
-├── Cono Setup 1.0.0.exe     # Windows installer
-├── Cono 1.0.0.exe           # Portable executable
+├── Cono Setup 1.0.1.exe     # Windows installer
+├── Cono 1.0.1.exe           # Portable executable
 └── win-unpacked/            # Unpacked application bundle
 ```
 
