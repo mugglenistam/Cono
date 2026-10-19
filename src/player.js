@@ -50,6 +50,7 @@ async function loadCurrent() {
   const v = V(), it = S.cur; if (!it) return;
   const loadId = ++mediaLoadId;
   waveAbort?.abort();
+  resetSeek(); resetThumbVideo();
   saveResume();
   S.subTracks = []; S.subIdx = -1; S.subCues = []; S.peaks = null; S.duration = 0;
   clearSubText();
@@ -77,11 +78,11 @@ async function loadCurrent() {
     applyVideoFx(); renderMarks(); updateMeta();
   };
   v.onerror = () => { osd('Cannot play this file — format or codec not supported'); toast('Unsupported format: ' + it.name + ' (try MP4/H.264, WebM, MP3, FLAC…)'); };
+  autoLoadSubs(it);
   try { await v.play(); } catch {}
+  if (loadId !== mediaLoadId) return;
   addRecent(it);
   applyFolderPreset(it);
-  autoLoadSubs(it);
-  if (!it.stream && it.kind === 'video') setupThumbVideo(it.url);
   renderPanel(); refreshNav();
 }
 function addRecent(it) {
@@ -108,7 +109,31 @@ function togglePlay() {
 function pop(icon) {
   const b = $('#bigState'); b.innerHTML = ico(icon); b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
 }
-function seekBy(d) { const v = V(); if (!v.duration) return; v.currentTime = clamp(v.currentTime + d, 0, v.duration); osd((d > 0 ? '+' : '') + d + 's  ' + fmt(v.currentTime)); }
+let seekTarget = null, pendingSeek = null, seekFrame = 0;
+function resetSeek() { cancelAnimationFrame(seekFrame); seekFrame = 0; seekTarget = pendingSeek = null; }
+function flushSeek() {
+  seekFrame = 0;
+  const v = V(); if (v.seeking || pendingSeek == null) return;
+  const target = pendingSeek; pendingSeek = null;
+  if (Math.abs(v.currentTime - target) > .001) v.currentTime = target;
+  else seekTarget = null;
+}
+function seekTo(time) {
+  const v = V(); if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+  seekTarget = pendingSeek = clamp(time, 0, v.duration);
+  // Let the active decode finish instead of restarting it on every repeated key.
+  flushSeek(); updateTimes();
+}
+function finishSeek() {
+  if (pendingSeek != null) seekFrame = requestAnimationFrame(flushSeek);
+  else seekTarget = null;
+  updateTimes(); renderSubs();
+}
+function seekBy(d) {
+  const v = V(); if (!Number.isFinite(v.duration) || !v.duration) return;
+  const target = clamp((pendingSeek ?? seekTarget ?? v.currentTime) + d, 0, v.duration);
+  seekTo(target); osd((d > 0 ? '+' : '') + d + 's  ' + fmt(target));
+}
 function setVolume(x, quiet) {
   const v = V(); x = clamp(x, 0, 1); v.volume = x; cfg().volume = x;
   if (x > 0 && v.muted) { v.muted = false; cfg().muted = false; }
@@ -146,17 +171,19 @@ function initSeek() {
   const seek = $('#seek'), v = V(); let drag = false;
   new ResizeObserver(drawWave).observe(seek);
   const at = e => { const r = seek.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1); };
-  seek.addEventListener('pointerdown', e => { drag = true; seek.setPointerCapture(e.pointerId); if (v.duration) v.currentTime = at(e) * v.duration; });
+  seek.addEventListener('pointerdown', e => { drag = true; seek.setPointerCapture(e.pointerId); if (v.duration) seekTo(at(e) * v.duration); });
   seek.addEventListener('pointermove', e => {
-    const f = at(e); if (drag && v.duration) v.currentTime = f * v.duration;
-    showThumb(f, e.clientX);
+    const f = at(e); if (drag && v.duration) seekTo(f * v.duration);
+    else showThumb(f, e.clientX);
   });
   seek.addEventListener('pointerup', () => drag = false);
-  seek.addEventListener('pointerleave', () => $('#thumb').classList.add('hidden'));
+  seek.addEventListener('lostpointercapture', () => drag = false);
+  seek.addEventListener('pointerleave', resetThumbVideo);
   v.addEventListener('timeupdate', () => { updateTimes(); sleepCheck(); });
   v.addEventListener('play', () => { updateTimes(); renderSubs(); });
   v.addEventListener('pause', () => { updateTimes(); saveResume(); });
-  v.addEventListener('seeked', renderSubs);
+  v.addEventListener('seeking', resetThumbVideo);
+  v.addEventListener('seeked', finishSeek);
   v.addEventListener('ended', onEnded);
   v.addEventListener('durationchange', () => { S.duration = v.duration; updateTimes(); renderMarks(); });
   v.addEventListener('volumechange', updateVolumeUI);
@@ -174,22 +201,41 @@ function onEnded() {
 function sleepCheck() { if (S.sleepAt && Date.now() >= S.sleepAt) { S.sleepAt = 0; V().pause(); osd('Sleep timer: paused'); if (S.panel === 'side') renderPanel(); } }
 
 /* thumbnail preview while hovering the seek bar */
-let tv, tvSrc, thumbBusy, thumbPending;
-function setupThumbVideo(url) { if (!tv) { tv = document.createElement('video'); tv.muted = true; tv.preload = 'auto'; } if (tvSrc !== url) { tv.src = url; tvSrc = url; } }
+let tv, thumbPending = null, thumbTimer;
+function resetThumbVideo() {
+  clearTimeout(thumbTimer); thumbPending = null;
+  if (tv) { tv.onloadedmetadata = tv.onseeked = tv.onerror = null; tv.pause(); tv.removeAttribute('src'); tv.load(); tv = null; }
+  $('#thumb').classList.add('hidden');
+}
+function queueThumbFrame() {
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(() => {
+    if (V().seeking || !S.cur || thumbPending == null) return;
+    if (!tv) {
+      const preview = tv = document.createElement('video'); preview.muted = true; preview.preload = 'metadata';
+      preview.onloadedmetadata = queueThumbFrame;
+      preview.onseeked = () => {
+        if (preview !== tv) return;
+        try { $('#thumb canvas').getContext('2d').drawImage(preview, 0, 0, 224, 126); } catch {}
+        if (thumbPending != null) queueThumbFrame();
+      };
+      preview.onerror = () => { if (preview === tv) resetThumbVideo(); };
+      preview.src = S.cur.url;
+    }
+    if (tv.readyState < 1 || tv.seeking) return;
+    const target = thumbPending; thumbPending = null;
+    if (Math.abs(tv.currentTime - target) > .01) tv.currentTime = target;
+  }, 100);
+}
 function showThumb(f, clientX) {
-  const th = $('#thumb'), v = V(); if (!v.duration) return th.classList.add('hidden');
+  const th = $('#thumb'), v = V(); if (!v.duration || v.seeking) return th.classList.add('hidden');
   const t = f * v.duration, seek = $('#seek').getBoundingClientRect();
   th.classList.remove('hidden');
   const w = 204, x = clamp(clientX - seek.left, w / 2, seek.width - w / 2);
   th.style.left = x + 'px'; th.lastElementChild.textContent = fmt(t);
   const showCanvas = cfg().thumbs && S.cur && S.cur.kind === 'video' && !S.cur.stream;
   th.classList.toggle('audio', !showCanvas);
-  if (showCanvas && tv) {
-    if (thumbBusy) { thumbPending = t; return; }
-    thumbBusy = true; tv.currentTime = t;
-    tv.onseeked = () => { try { th.querySelector('canvas').getContext('2d').drawImage(tv, 0, 0, 224, 126); } catch {} thumbBusy = false; if (thumbPending != null) { const p = thumbPending; thumbPending = null; tv.currentTime = p; thumbBusy = true; } };
-    setTimeout(() => { thumbBusy = false; }, 600);
-  }
+  if (showCanvas) { thumbPending = t; queueThumbFrame(); }
 }
 function renderMarks() {
   const m = $('.seek-marks'); m.innerHTML = '';
@@ -264,10 +310,11 @@ function cleanText(t) { return t.replace(/\{\\[^}]*\}/g, '').replace(/\\N/g, '\n
 function parseSubs(text, ext) {
   const cues = []; text = text.replace(/\r/g, '');
   if (/\.(ass|ssa)$/i.test(ext)) {
-    let fmtCols = [];
+    let fmtCols = [], inEvents = false;
     for (const line of text.split('\n')) {
-      if (/^Format:/i.test(line) && !fmtCols.length) fmtCols = line.slice(7).split(',').map(s => s.trim().toLowerCase());
-      if (/^Dialogue:/i.test(line)) {
+      if (/^\[/.test(line)) inEvents = /^\[Events\]/i.test(line.trim());
+      if (inEvents && /^Format:/i.test(line)) fmtCols = line.slice(7).split(',').map(s => s.trim().toLowerCase());
+      if (inEvents && /^Dialogue:/i.test(line)) {
         const parts = line.slice(9).split(','); const si = fmtCols.indexOf('start'), ei = fmtCols.indexOf('end'), ti = fmtCols.indexOf('text');
         const txt = parts.slice(ti < 0 ? 9 : ti).join(',');
         cues.push({ s: parseTime(parts[si < 0 ? 1 : si]), e: parseTime(parts[ei < 0 ? 2 : ei]), text: cleanText(txt) });
@@ -283,36 +330,82 @@ function parseSubs(text, ext) {
   }
   return cues.filter(c => c.text).sort((a, b) => a.s - b.s);
 }
-async function addSubtitleFile(path, select = true) {
+async function addSubtitleFile(path, select = true, valid = () => true) {
+  const item = S.cur;
   const text = await (hasApi ? api.readText(path) : null); if (text == null) return false;
+  if (S.cur !== item || !valid()) return false;
   const cues = parseSubs(text, path); if (!cues.length) { toast('No cues found in ' + baseName(path)); return false; }
   if (S.subTracks.some(t => t.path === path)) { if (select) selectSub(S.subTracks.findIndex(t => t.path === path)); return true; }
   S.subTracks.push({ path, name: stripExt(baseName(path)), cues });
   if (select) selectSub(S.subTracks.length - 1);
   return true;
 }
-function selectSub(i) {
-  S.subIdx = i; S.subCues = i >= 0 ? S.subTracks[i].cues : []; S.sub_last = 0;
+async function selectSub(i) {
+  const track = S.subTracks[i], item = S.cur;
+  if (i >= 0 && (!track || track.supported === false)) return;
+  S.subIdx = i; S.subCues = track?.cues || []; S.sub_last = 0;
   const on = i >= 0; S.store.sub.enabled = on; clearSubText(); renderSubs(); save();
-  if (S.panel === 'side') renderPanel();
+  renderPanel(); refreshNav(); drawSubTimeline();
+  if (track?.embedded && !track.cues) {
+    osd('Loading embedded subtitles…');
+    try {
+      const text = await (track.pending ||= api.subtitleText(track.path, track.streamIndex));
+      if (S.cur !== item || !S.subTracks.includes(track)) return;
+      track.cues = parseSubs(text, '.srt');
+      if (S.subIdx !== i) return;
+      S.subCues = track.cues;
+      if (!track.cues.length) toast('This subtitle track contains no readable text');
+      renderSubs(); renderPanel(); drawSubTimeline();
+    } catch {
+      track.pending = null;
+      if (S.cur === item && S.subTracks[S.subIdx] === track) { selectSub(-1); toast('Could not extract this subtitle track. Try another track or a subtitle file from SubDL.'); }
+      return;
+    }
+  }
   osd(on ? 'Subtitles: ' + S.subTracks[i].name : 'Subtitles off');
 }
+async function loadEmbeddedSubtitles(it, valid = () => true) {
+  if (it?.kind !== 'video' || !it.path || it.stream || !hasApi || !api.subtitleTracks) return;
+  try {
+    const tracks = await api.subtitleTracks(it.path);
+    if (S.cur !== it || !valid()) return;
+    for (const track of tracks) {
+      if (S.subTracks.some(t => t.embedded && t.path === it.path && t.streamIndex === track.index)) continue;
+      const label = [track.title || 'Track ' + (track.index + 1), track.language, 'Embedded', track.supported ? '' : 'image/unsupported'].filter(Boolean).join(' · ');
+      S.subTracks.push({ path: it.path, name: label, embedded: true, streamIndex: track.index, language: track.language, default: track.default, forced: track.forced, supported: track.supported, cues: null });
+    }
+    renderPanel();
+  } catch { if (S.cur === it && valid()) toast('Could not read embedded subtitles from this video'); }
+}
 function subKey(name) { const m = name.match(/[sS](\d{1,2})[eE](\d{1,3})/) || name.match(/(\d{1,2})x(\d{2,3})/); if (m) return `${+m[1]}x${+m[2]}`; const n = name.match(/(?:^|[^\d])(\d{1,3})(?:[^\dp]|$)/); return n ? 'e' + +n[1] : null; }
+let subtitleLoadId = 0;
 async function autoLoadSubs(it) {
-  if (!it.path || it.stream || !hasApi) return;
+  const id = ++subtitleLoadId, valid = () => S.cur === it && id === subtitleLoadId;
+  if (!it.path || it.stream || it.kind !== 'video' || !hasApi) return;
   const mapped = S.store.subMap[it.path] || [];
-  for (const p of mapped) await addSubtitleFile(p, S.subIdx < 0);
+  for (const p of mapped) { await addSubtitleFile(p, S.subIdx < 0, valid); if (!valid()) return; }
   if (!mapped.length && cfg().autoSubs && cfg().subMatch !== 'none') {
     const base = stripExt(it.name).toLowerCase();
     let found = [];
     if (cfg().subMatch === 'any') { const all = await api.listSubs(dirName(it.path)); const k = subKey(it.name); found = all.filter(p => !k || subKey(baseName(p)) === k); if (!k && all.length > 1) found = []; }
     else { found = await api.findSubs(it.path); if (cfg().subMatch === 'exact') found = found.filter(p => { const b = stripExt(baseName(p)).toLowerCase(); return b === base || b.startsWith(base + '.') && b.length - base.length <= 6; }); }
-    for (const p of found) await addSubtitleFile(p, S.subIdx < 0);
+    if (!valid()) return;
+    for (const p of found) { await addSubtitleFile(p, S.subIdx < 0, valid); if (!valid()) return; }
   }
+  await loadEmbeddedSubtitles(it, valid);
+  if (!valid()) return;
+  if (S.subIdx < 0 && cfg().autoSubs && S.store.sub.enabled) {
+    const canonicalLanguage = value => { try { return new Intl.Locale(value).language; } catch { return value.toLowerCase(); } };
+    const language = canonicalLanguage(S.store.sub.defaultLang);
+    const choices = S.subTracks.map((track, i) => ({ track, i })).filter(({ track }) => track.supported !== false);
+    const preferred = (language && choices.find(({ track }) => canonicalLanguage(track.language || '') === language)) || choices.find(({ track }) => track.default) || choices.find(({ track }) => track.forced) || choices[0];
+    if (preferred) await selectSub(preferred.i);
+  }
+  if (!valid()) return;
   if (S.subIdx < 0) selectSubSilent(-1); else { renderPanel(); }
   S.subLoadedFor = it;
 }
-function selectSubSilent(i) { S.subIdx = i; S.subCues = []; renderPanel(); }
+function selectSubSilent(i) { S.subIdx = i; S.subCues = []; renderPanel(); refreshNav(); }
 function clearSubText() { $('#subs').innerHTML = ''; S.sub_cur = null; }
 function renderSubs() {
   const box = $('#subs'), v = V(); if (S.subIdx < 0 || !S.store.sub.enabled || !S.subCues.length) { if (box.firstChild) box.innerHTML = ''; S.sub_cur = null; return; }

@@ -68,6 +68,8 @@ See [all releases](https://github.com/mugglenistam/Cono/releases) for downloads 
 
 - Load SRT, VTT, ASS, and SSA subtitle files.
 - Automatically match local subtitle files to media filenames.
+- Discover and select embedded text subtitle tracks in local MKV and other supported video containers, including SRT, ASS/SSA, WebVTT, and MP4 timed text.
+- Find additional subtitle files on [SubDL](https://subdl.com/).
 - Adjust subtitle timing, font, size, color, outline, background, and position.
 - Drag the subtitle timeline to adjust synchronization.
 - Save playback and subtitle presets, including folder-specific presets.
@@ -97,6 +99,7 @@ Current limits:
 
 - AVI, WMV, DTS audio, and HLS/M3U8 streams are not supported in this release.
 - Audio delay and manual audio-track switching are not implemented.
+- Embedded image subtitles such as PGS and VobSub are detected but cannot currently be displayed. Text-based embedded subtitles are extracted with bundled FFmpeg tools; ASS styling is rendered as plain dialogue text.
 - Waveforms are generated for local audio files up to **150 MB** that Chromium can decode. Larger files can still play without a waveform.
 - Equalizer and boost processing work with local files.
 - Music albums are grouped by folder. Dedicated Artists and Genres views are not implemented.
@@ -192,10 +195,12 @@ Run the self-contained Electron regression checks:
 ```powershell
 node test/ui-regressions.js
 node test/audio-media.js
+node test/video-subtitles.js
 ```
 
 - **UI checks:** sidebar behavior, navigation history, volume colors and clipping, dragging, mute, keyboard input, and window sizes.
 - **Audio checks:** generated stereo fixtures, embedded and fallback artwork, durations in library views and playlists, waveform progress and accent colors, and cleanup when switching to video.
+- **Video checks:** generated long-GOP MKV with embedded English SRT and Persian ASS, subtitle selection and timing, exact and repeated seeks, resumed video frames, and the SubDL entry point.
 
 The audio checks can also target a packaged application:
 
@@ -220,6 +225,7 @@ src/
 ├── library.js             Library navigation and media views
 ├── media.js               Shared artwork and duration loading
 ├── audio-metadata.cjs     Embedded artwork extraction
+├── embedded-subtitles.cjs Embedded subtitle inspection and extraction
 ├── panels.js              Playback controls, side panels, and queue
 ├── dialogs.js             Settings, onboarding, dialogs, and shortcuts
 ├── icons.js               Interface icons and app-logo markup
@@ -241,6 +247,7 @@ For code contributions, keep changes focused, describe the problem and resulting
 - Desktop runtime and playback: [Electron](https://www.electronjs.org/) and Chromium.
 - Embedded artwork parsing: [music-metadata](https://github.com/Borewit/music-metadata).
 - Windows packaging: [electron-builder](https://www.electron.build/).
+- Embedded subtitle tools: [FFmpeg and FFprobe](https://ffmpeg.org/). Bundled Windows helper license and build information are included in [`src/third-party/`](src/third-party/).
 
 Cono is an independent project and is not affiliated with or endorsed by VideoLAN or the VLC project.
 

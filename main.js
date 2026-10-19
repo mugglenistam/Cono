@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const { readAudioCover } = require('./src/audio-metadata.cjs');
+const { listEmbeddedSubtitles, extractEmbeddedSubtitle, stopSubtitleTools } = require('./src/embedded-subtitles.cjs');
 
 const MEDIA_EXT = new Set(['.mp4','.mkv','.webm','.mov','.m4v','.avi','.ogv','.mp3','.flac','.wav','.ogg','.m4a','.opus','.aac']);
 const AUDIO_EXT = new Set(['.mp3','.flac','.wav','.ogg','.m4a','.opus','.aac']);
@@ -71,6 +72,7 @@ app.whenReady().then(() => {
   if (initial.length) win.webContents.once('did-finish-load', () => win.webContents.send('open:paths', initial));
 });
 app.on('window-all-closed', () => app.quit());
+app.on('before-quit', stopSubtitleTools);
 
 ipcMain.handle('win:minimize', () => win.minimize());
 ipcMain.handle('win:maximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize()));
@@ -94,6 +96,8 @@ ipcMain.handle('dialog:folder', async () => {
 });
 ipcMain.handle('fs:scan', (_e, dir) => scanDir(dir));
 ipcMain.handle('media:cover', (_e, file) => readAudioCover(file));
+ipcMain.handle('media:subtitleTracks', (_e, file) => listEmbeddedSubtitles(file));
+ipcMain.handle('media:subtitleText', (_e, file, index) => extractEmbeddedSubtitle(file, index));
 ipcMain.handle('fs:describe', (_e, paths) => paths.map(p => {
   try { const st = fs.statSync(p); if (st.isDirectory()) return { dir: p, ...scanDir(p) }; return describe(p); } catch { return null; }
 }).filter(Boolean));

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   pickFiles: kind => inv('dialog:files', kind), pickFolder: () => inv('dialog:folder'),
   scan: d => inv('fs:scan', d), describe: p => inv('fs:describe', p),
   audioCover: p => inv('media:cover', p),
+  subtitleTracks: p => inv('media:subtitleTracks', p), subtitleText: (p, index) => inv('media:subtitleText', p, index),
   readText: p => inv('fs:readText', p), findSubs: p => inv('fs:findSubs', p), listSubs: d => inv('fs:listSubs', d),
   fetchText: u => inv('net:fetchText', u), showInFolder: p => inv('shell:show', p),
   pathForFile: f => webUtils.getPathForFile(f),

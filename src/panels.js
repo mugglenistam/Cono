@@ -63,7 +63,7 @@ function updateVolumeUI() {
 /* ---------- quick menus from the control bar ---------- */
 function subsMenu(el) {
   const items = [{ head: 'Subtitles' }, { label: 'Off', check: S.subIdx < 0, action: () => selectSub(-1) }];
-  S.subTracks.forEach((t, i) => items.push({ label: t.name, check: S.subIdx === i, action: () => selectSub(i) }));
+  S.subTracks.forEach((t, i) => items.push({ label: t.name, check: S.subIdx === i, disabled: t.supported === false, action: () => selectSub(i) }));
   items.push('-', { label: 'Add subtitles…', icon: 'plus', action: () => addSubtitlesDialog() }, { label: 'Subtitle settings', icon: 'sliders', action: () => openPanel('side', 'subs') });
   menuAt(el, items, 'right');
 }
@@ -103,14 +103,14 @@ function sliderRow(label, min, max, step, val, fmtf, on, hint) {
   return row;
 }
 function selectField(opts, val, on, cls = 'w-m') {
-  const s = h('select', { class: 'field ' + cls }, opts.map(o => { const [v, l] = Array.isArray(o) ? o : [o, o]; return h('option', { value: v, selected: String(v) === String(val) }, l); }));
+  const s = h('select', { class: 'field ' + cls }, opts.map(o => { const [v, l, disabled] = Array.isArray(o) ? o : [o, o]; return h('option', { value: v, selected: String(v) === String(val), disabled }, l); }));
   s.addEventListener('change', () => on(s.value)); return s;
 }
 function tabSubs(sc) {
   const s = S.store.sub;
   let sec = h('div', { class: 'sec' }, h('div', { class: 'sec-t' }, 'Track'));
-  sec.append(sRow('Subtitle track', selectField([['-1', 'Off'], ...S.subTracks.map((t, i) => [i, t.name])], S.subIdx, v => selectSub(+v), 'w-m')));
-  sec.append(h('div', { class: 'row' }, h('button', { class: 'btn', onclick: addSubtitlesDialog, html: ico('plus') + 'Add subtitles…' }), h('button', { class: 'btn ghost', onclick: () => hasApi ? window.open('https://www.opensubtitles.org') : open('https://www.opensubtitles.org'), html: ico('external') + 'OpenSubtitles' })));
+  sec.append(sRow('Subtitle track', selectField([['-1', 'Off'], ...S.subTracks.map((t, i) => [i, t.name, t.supported === false])], S.subIdx, v => selectSub(+v), 'w-m')));
+  sec.append(h('div', { class: 'row' }, h('button', { class: 'btn', onclick: addSubtitlesDialog, html: ico('plus') + 'Add subtitles…' }), h('button', { class: 'btn ghost', onclick: () => hasApi ? window.open('https://subdl.com/') : open('https://subdl.com/'), html: ico('external') + 'SubDL' })));
   sc.append(sec);
   sec = h('div', { class: 'sec' }, h('div', { class: 'sec-t' }, 'Timing'));
   sec.append(sliderRow('Subtitle delay', -30, 30, 0.1, s.delay, x => (x > 0 ? '+' : '') + x.toFixed(1) + ' s', x => { s.delay = x; renderSubs(); drawSubTimeline(); save(); }, 'Positive = later. Drag the timeline strip to sync by eye.'));

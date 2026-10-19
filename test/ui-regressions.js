@@ -9,7 +9,7 @@ if (process.versions.electron && process.type === 'browser') {
   app.commandLine.appendSwitch('force-device-scale-factor', '1');
   app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: 1280, height: 780,
-      webPreferences: { partition: `ui-test-${Date.now()}`, backgroundThrottling: false } });
+      webPreferences: { partition: `ui-test-${Date.now()}`, backgroundThrottling: false, offscreen: true } });
     const run = code => win.webContents.executeJavaScript(code);
     const paint = async () => {
       await run(`new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);

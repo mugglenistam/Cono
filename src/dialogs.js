@@ -37,7 +37,7 @@ function contextMenu(e) {
   showMenu([
     { label: v.paused ? 'Play' : 'Pause', icon: v.paused ? 'play' : 'pause', kb: 'Space', action: togglePlay }, { label: 'Stop', icon: 'min', action: stop },
     { label: 'Previous', icon: 'prev', kb: 'P', action: prev }, { label: 'Next', icon: 'next', kb: 'N', action: next }, '-',
-    { label: 'Subtitle', icon: 'subs', sub: () => [{ label: 'Off', check: S.subIdx < 0, action: () => selectSub(-1) }, ...S.subTracks.map((t, i) => ({ label: t.name, check: S.subIdx === i, action: () => selectSub(i) })), '-', { label: 'Add subtitles…', icon: 'plus', action: addSubtitlesDialog }] },
+    { label: 'Subtitle', icon: 'subs', sub: () => [{ label: 'Off', check: S.subIdx < 0, action: () => selectSub(-1) }, ...S.subTracks.map((t, i) => ({ label: t.name, check: S.subIdx === i, disabled: t.supported === false, action: () => selectSub(i) })), '-', { label: 'Add subtitles…', icon: 'plus', action: addSubtitlesDialog }] },
     { label: 'Audio', icon: 'audio', sub: () => [{ label: 'Equalizer', icon: 'sliders', action: () => openPanel('side', 'audio') }, { label: 'Output device…', action: () => openPanel('side', 'audio') }] },
     { label: 'Video', icon: 'video', sub: () => ['fit', 'fill', 'stretch', '16:9', '4:3', '21:9'].map(a => ({ label: 'Aspect: ' + a, check: S.store.video.aspect === a, action: () => { S.store.video.aspect = a; applyVideoFx(); save(); } })) },
     { label: 'Playback', icon: 'clock', sub: () => [0.5, 0.75, 1, 1.25, 1.5, 2].map(x => ({ label: 'Speed ' + x + '×', check: Math.abs(v.playbackRate - x) < .01, action: () => setSpeed(x) })) }, '-',
@@ -57,8 +57,19 @@ async function addSubtitlesDialog() {
   const note = h('div', { class: 'kbd-hint', style: { marginTop: '12px', lineHeight: 1.6 } }, 'Subtitle files are matched to episodes automatically (S01E02, 1x02 or episode number). The matches are saved, so they are used every time you play these files.');
   const from = h('div', { style: { display: 'flex', gap: '8px', marginTop: '14px' } },
     h('button', { class: 'btn primary', html: ico('file') + 'From this computer…', onclick: async () => { const subs = hasApi ? await api.pickFiles('subs') : []; if (!subs.length) return; m.close(); await assignSubs(scope, subs); } }),
-    h('button', { class: 'btn ghost', html: ico('external') + 'Find on OpenSubtitles', onclick: () => window.open('https://www.opensubtitles.org/en/search') }));
-  const m = modal({ title: 'Add subtitles to…', body: h('div', {}, cards, from, note) });
+    h('button', { class: 'btn ghost', html: ico('external') + 'Find on SubDL', onclick: () => window.open('https://subdl.com/') }));
+  const embedded = h('div', { style: { marginTop: '18px' } });
+  const m = modal({ title: 'Add subtitles to…', body: h('div', {}, cards, from, note, embedded) });
+  if (hasApi && api.subtitleTracks && S.cur.kind === 'video' && !S.cur.stream) {
+    const item = S.cur;
+    embedded.append(h('div', { class: 'kbd-hint' }, 'Reading subtitles in this video…'));
+    await loadEmbeddedSubtitles(item);
+    if (S.cur !== item || !m.el.isConnected) return;
+    embedded.replaceChildren(h('div', { class: 'sec-t' }, 'Subtitles in this video'));
+    const tracks = S.subTracks.map((track, i) => ({ track, i })).filter(({ track }) => track.embedded);
+    if (!tracks.length) embedded.append(h('div', { class: 'kbd-hint' }, 'No embedded subtitle tracks found. You can add a subtitle file from this computer or find one on SubDL.'));
+    tracks.forEach(({ track, i }) => embedded.append(h('button', { class: 'btn ghost', style: { display: 'flex', width: '100%', marginTop: '6px' }, disabled: track.supported === false, onclick: () => { m.close(); selectSub(i); } }, track.name)));
+  }
 }
 async function assignSubs(scope, subs) {
   let media = [S.cur];
