@@ -8,8 +8,9 @@ if (!process.versions.electron || process.type !== 'browser') {
   const assert = require('node:assert/strict');
   const fs = require('node:fs');
   const path = require('node:path');
+  const appRoot = process.env.CONO_APP_ROOT || path.join(__dirname, '..');
   const { pathToFileURL } = require('node:url');
-  const { readAudioCover } = require('../src/audio-metadata.cjs');
+  const { readAudioCover } = require(path.join(appRoot, 'src/audio-metadata.cjs'));
   app.commandLine.appendSwitch('force-device-scale-factor', '1');
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vlc-audio-test-'));
@@ -46,7 +47,7 @@ if (!process.versions.electron || process.type !== 'browser') {
   ipcMain.handle('fs:scan', () => ({ folders: [], files: items }));
   app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: 1280, height: 780, webPreferences: {
-      preload: path.join(__dirname, '../preload.js'), contextIsolation: true,
+      preload: path.join(appRoot, 'preload.js'), contextIsolation: true,
       backgroundThrottling: false, offscreen: true, partition: `audio-test-${Date.now()}`, webSecurity: false,
     } });
     const run = code => win.webContents.executeJavaScript(code);
@@ -64,7 +65,7 @@ if (!process.versions.electron || process.type !== 'browser') {
       assert.equal(await readAudioCover(plain), null, 'audio without embedded image');
       assert.match(await readAudioCover(embedded), /^data:image\/png;base64,/, 'real embedded image parser');
       assert.equal(await readAudioCover(path.join(dir, 'missing.wav')), null, 'missing files fall back');
-      await win.loadFile(path.join(__dirname, '../src/index.html'));
+      await win.loadFile(path.join(appRoot, 'src/index.html'));
       await waitFor('window.__ready', 'initialization');
       await run(`libGo('music', ${JSON.stringify(dir)})`);
       await waitFor(`$$('#library .card .th img').length === 2 && $$('#library .card .th img').some(img => img.src.startsWith('data:'))`, 'folder artwork');
