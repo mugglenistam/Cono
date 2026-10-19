@@ -69,7 +69,7 @@ async function loadCurrent() {
   $('.art-title').textContent = stripExt(it.name);
   $('#title').textContent = stripExt(it.name);
   $('#folderName').textContent = it.path && !it.stream ? baseName(dirName(it.path)) || 'Library' : (it.stream ? 'Network' : 'Library');
-  document.title = stripExt(it.name) + ' — VLC Redesign';
+  document.title = stripExt(it.name) + ' — Cono';
   const r = S.store.resume[keyOf(it)];
   v.onloadedmetadata = () => {
     S.duration = v.duration; updateTimes();

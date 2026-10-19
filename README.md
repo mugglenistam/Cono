@@ -1,6 +1,6 @@
-# VLC Redesign (Windows)
+# Cono (Windows)
 
-A modern media player UI based on the "I Redesigned VLC After 25 Years" design study. Not affiliated with VideoLAN.
+A modern audio and video player based on the "I Redesigned VLC After 25 Years" design study. Not affiliated with VideoLAN.
 
 ## Run / build (on Windows, Node 18+)
     npm install

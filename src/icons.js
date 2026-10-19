@@ -76,8 +76,8 @@ function ico(name, cls = '') {
 function ico2(name) {
   return `<span class="ico2">${ico(name)}</span>`;
 }
-const CONE_SVG = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3.2c.9 0 1.6.6 1.9 1.4L23 22H9L14.1 4.6c.3-.8 1-1.4 1.9-1.4z" fill="var(--accent)"/><path d="M13.1 13h5.8l1 3.6h-7.8z M11.3 19.2h9.4l.6 2.2h-10.6z" fill="#e9e9e9"/><rect x="3.5" y="22" width="25" height="6.5" rx="2" fill="var(--accent)"/></svg>`;
+const APP_LOGO = '<img src="assets/cono-icon.png" alt="Cono" draggable="false">';
 function hydrateIcons(root = document) {
   root.querySelectorAll('[data-ico]').forEach(el => { if (!el.dataset.done) { el.insertAdjacentHTML('afterbegin', ico(el.dataset.ico)); el.dataset.done = 1; } });
-  root.querySelectorAll('.logo:not([data-done])').forEach(el => { el.innerHTML = CONE_SVG; el.dataset.done = 1; });
+  root.querySelectorAll('.logo:not([data-done])').forEach(el => { el.innerHTML = APP_LOGO; el.dataset.done = 1; });
 }

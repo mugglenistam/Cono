@@ -10,7 +10,14 @@ const SUB_EXT = new Set(['.srt','.vtt','.ass','.ssa']);
 
 let win;
 const storeFile = () => path.join(app.getPath('userData'), 'store.json');
-function readStore() { try { return JSON.parse(fs.readFileSync(storeFile(), 'utf8')); } catch { return {}; } }
+function readStore() {
+  // Carry the existing library and settings across the application rename.
+  const files = [storeFile(), ...['VLC Redesign', 'vlc-redesign'].map(name => path.join(app.getPath('appData'), name, 'store.json'))];
+  for (const file of files) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  }
+  return {};
+}
 function writeStore(o) { try { fs.writeFileSync(storeFile(), JSON.stringify(o)); } catch {} }
 
 function describe(p) {
@@ -39,7 +46,7 @@ function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
     width: Math.min(1280, width), height: Math.min(780, height), minWidth: 760, minHeight: 480,
-    frame: false, backgroundColor: '#000000', title: 'VLC Redesign',
+    frame: false, backgroundColor: '#000000', title: 'Cono', icon: path.join(__dirname, 'src/assets/cono-icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, webSecurity: false }
   });
   win.setMenuBarVisibility(false);
@@ -58,6 +65,7 @@ app.on('second-instance', (_e, argv) => {
 });
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') app.setAppUserModelId('com.mugglenistam.cono');
   createWindow();
   const initial = process.argv.slice(app.isPackaged ? 1 : 2).filter(a => !a.startsWith('-') && fs.existsSync(a));
   if (initial.length) win.webContents.once('did-finish-load', () => win.webContents.send('open:paths', initial));

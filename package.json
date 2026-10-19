@@ -1,10 +1,11 @@
 {
-  "name": "vlc-redesign",
-  "productName": "VLC Redesign",
+  "name": "cono",
+  "productName": "Cono",
   "version": "1.0.0",
-  "description": "A modern redesign of VLC media player (Windows)",
+  "description": "Cono — a modern audio and video player for Windows",
   "main": "main.js",
   "scripts": {
+    "icons": "node scripts/prepare-icons.cjs",
     "start": "electron .",
     "dist": "electron-builder --win nsis portable"
   },
@@ -13,13 +14,13 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.example.vlcredesign",
-    "productName": "VLC Redesign",
+    "appId": "com.mugglenistam.cono",
+    "productName": "Cono",
     "files": ["main.js", "preload.js", "src/**/*", "package.json"],
     "fileAssociations": [
       { "ext": ["mp4","mkv","webm","mov","m4v","mp3","flac","wav","ogg","m4a","opus"], "name": "Media file", "role": "Viewer" }
     ],
-    "win": { "target": ["nsis", "portable"], "icon": "build/icon.png" },
+    "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
   },
   "dependencies": {

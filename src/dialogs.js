@@ -183,7 +183,7 @@ function settingsDialog(startCat) {
   modal({ title: 'Settings', body: root, wide: true });
   const mb = $('.modal-b:last-of-type', $('#modalLayer').lastChild); if (mb) mb.style.padding = '0';
 }
-function aboutBody() { return h('div', { class: 'sec' }, h('div', { class: 'logo', style: { width: '56px', height: '56px' }, html: CONE_SVG }), h('h3', { style: { margin: '12px 0 4px', fontSize: '18px' } }, 'VLC Redesign'), h('div', { class: 'kbd-hint' }, 'Version 1.0 · A concept media player inspired by the “I Redesigned VLC After 25 Years” design study. Not affiliated with VideoLAN.'), h('div', { class: 'warn', style: { marginTop: '14px' } }, 'Playback uses Chromium’s media engine: MP4/H.264, WebM, MKV (H.264/VP9), MP3, FLAC, AAC, Opus, WAV, OGG. Formats such as AVI, WMV or DTS audio need a native engine like libVLC.')); }
+function aboutBody() { return h('div', { class: 'sec' }, h('div', { class: 'logo', style: { width: '56px', height: '56px' }, html: APP_LOGO }), h('h3', { style: { margin: '12px 0 4px', fontSize: '18px' } }, 'Cono'), h('div', { class: 'kbd-hint' }, 'Version 1.0 · A modern audio and video player inspired by the “I Redesigned VLC After 25 Years” design study. Not affiliated with VideoLAN.'), h('div', { class: 'warn', style: { marginTop: '14px' } }, 'Playback uses Chromium’s media engine: MP4/H.264, WebM, MKV (H.264/VP9), MP3, FLAC, AAC, Opus, WAV, OGG. Formats such as AVI, WMV or DTS audio need a native engine like libVLC.')); }
 function aboutDialog() { modal({ title: 'About', body: aboutBody(), buttons: [{ label: 'Close', primary: true }] }); }
 
 /* ---------- onboarding ---------- */
@@ -194,7 +194,7 @@ function onboarding() {
   const keys = [['Space', 'Play / Pause'], ['← →', 'Seek 5 s'], ['↑ ↓', 'Volume'], ['F', 'Fullscreen'], ['Ctrl+B', 'Bookmark'], ['Q', 'Queue']];
   body.append(h('div', {}, h('div', { class: 'sec-t' }, 'Theme'), themeCards), h('div', {}, h('div', { class: 'sec-t' }, 'Accent colour'), sw),
     h('div', {}, h('div', { class: 'sec-t' }, 'Essential shortcuts'), h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 18px' } }, keys.map(([k, n]) => h('div', { class: 'row', style: { minHeight: '26px' } }, h('span', { class: 'keycap' }, k), h('label', {}, n))))));
-  modal({ title: 'Welcome to VLC Redesign', body, buttons: [{ label: 'Get started', primary: true, action: () => { c.onboarded = true; save(); } }], onClose: () => { c.onboarded = true; save(); } });
+  modal({ title: 'Welcome to Cono', body, buttons: [{ label: 'Get started', primary: true, action: () => { c.onboarded = true; save(); } }], onClose: () => { c.onboarded = true; save(); } });
 }
 
 /* ---------- keyboard ---------- */

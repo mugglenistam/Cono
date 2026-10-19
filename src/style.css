@@ -23,7 +23,7 @@ svg.ico *{vector-effect:none}
 .tb-left,.tb-right{display:flex;align-items:center;gap:2px;min-width:0}
 .tb-title{position:absolute;left:50%;transform:translateX(-50%);max-width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim);font-size:12.5px;pointer-events:none}
 .logo{width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r)}
-.logo svg{width:22px;height:22px}
+.logo img{width:80%;height:80%;object-fit:contain}
 .logo:hover,.icon-btn:hover{background:var(--hover)}
 .icon-btn{width:34px;height:34px;display:grid;place-items:center;border-radius:var(--r);color:var(--dim)}
 .icon-btn:hover{color:var(--text)}
