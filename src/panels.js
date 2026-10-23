@@ -36,22 +36,22 @@ function volumeControl() {
   const w = h('div', { class: 'vol' });
   const m = h('button', { class: 'ctl dim', title: 'Mute (M)', id: 'btnMute', html: ico('volume') }); m.addEventListener('click', toggleMute);
   const cone = h('div', { class: 'cone', id: 'cone', role: 'slider', tabindex: 0, 'aria-label': 'Volume', 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('div', { class: 'shape' }, h('div', { class: 'shape fill' })));
-  const set = e => { const r = cone.getBoundingClientRect(); setVolume((e.clientX - r.left) / r.width, true); osd('Volume ' + Math.round(V().volume * 100) + '%'); };
+  const set = e => { const r = cone.getBoundingClientRect(); setVolume((e.clientX - r.left) / r.width, true); osd('Volume ' + Math.round(volumeLevel() * 100) + '%'); };
   let d = false;
   cone.addEventListener('pointerdown', e => { d = true; cone.setPointerCapture(e.pointerId); set(e); });
   cone.addEventListener('pointermove', e => d && set(e)); cone.addEventListener('pointerup', () => d = false);
   cone.addEventListener('lostpointercapture', () => d = false);
   cone.addEventListener('keydown', e => {
-    const values = { ArrowRight: V().volume + .05, ArrowUp: V().volume + .05, ArrowLeft: V().volume - .05, ArrowDown: V().volume - .05, Home: 0, End: 1 };
+    const values = { ArrowRight: volumeLevel() + .05, ArrowUp: volumeLevel() + .05, ArrowLeft: volumeLevel() - .05, ArrowDown: volumeLevel() - .05, Home: 0, End: 1 };
     if (!(e.key in values)) return;
     e.preventDefault(); e.stopPropagation(); setVolume(values[e.key]);
   });
-  cone.addEventListener('wheel', e => { e.preventDefault(); setVolume(V().volume + (e.deltaY < 0 ? .05 : -.05)); });
+  cone.addEventListener('wheel', e => { e.preventDefault(); setVolume(volumeLevel() + (e.deltaY < 0 ? .05 : -.05)); });
   w.append(m, cone); return w;
 }
 function updateVolumeUI() {
   const v = V(), f = $('#cone .fill'), m = $('#btnMute'); if (!f) return;
-  const volume = v.muted ? 0 : v.volume, cone = $('#cone');
+  const volume = v.muted ? 0 : volumeLevel(), cone = $('#cone');
   f.style.width = volume * 100 + '%';
   cone.style.setProperty('--volume-color', `hsl(${120 * (1 - volume)} 65% 48%)`);
   cone.classList.toggle('muted', v.muted);
@@ -80,7 +80,7 @@ async function audioMenu(el) {
 function togglePanel(name) { if (S.panel === name) closePanel(); else openPanel(name); }
 function openPanel(name, tab) { S.panel = name; if (tab) S.panelTab = tab; $('#rightPanel').classList.remove('hidden'); renderPanel(); afterLayout(); }
 function closePanel() { S.panel = null; $('#rightPanel').classList.add('hidden'); refreshNav(); afterLayout(); }
-function afterLayout() { setTimeout(() => { applySubStyle(); applyVideoFx(); drawWave(); drawSubTimeline(); }, 30); refreshNav(); }
+function afterLayout() { syncWorkspaceLayout(); setTimeout(() => { applySubStyle(); applyVideoFx(); drawWave(); drawSubTimeline(); }, 30); refreshNav(); }
 function renderPanel() {
   const p = $('#rightPanel'); if (!S.panel) return;
   if (S.panel === 'queue') return renderQueue();
@@ -210,6 +210,7 @@ function promptName(title, label, value, cb) {
 
 /* ---------- queue ---------- */
 function renderQueue() {
+  updateMusicState();
   if (S.panel !== 'queue') return;
   const p = $('#rightPanel'); p.innerHTML = '';
   const btn = (ic, title, f, on) => h('button', { class: 'icon-btn' + (on ? ' on' : ''), title, html: ico(ic), onclick: f });

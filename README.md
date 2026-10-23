@@ -12,26 +12,35 @@ A modern audio and video player for Windows, with a customizable interface, audi
 
 ![Windows x64](https://img.shields.io/badge/platform-Windows_x64-0078D4)
 ![Electron](https://img.shields.io/badge/built_with-Electron-47848F)
-![Version 1.0.1](https://img.shields.io/badge/version-1.0.1-A855F7)
+![Version 1.0.3](https://img.shields.io/badge/version-1.0.3-A855F7)
 
 </div>
 
 ## Download
 
-The current release is **Cono 1.0.1 for 64-bit Windows**. Choose the download that fits how you want to use the app.
+The current release is **Cono 1.0.3 for 64-bit Windows**.
 
 | Download | Best for | How to use |
 | --- | --- | --- |
-| [**Windows installer**](https://github.com/mugglenistam/Cono/releases/download/v1.0.1/Cono-Setup-1.0.1-x64.exe) | Regular use on your computer | Run the setup wizard and choose an installation folder. |
-| [**Portable executable**](https://github.com/mugglenistam/Cono/releases/download/v1.0.1/Cono-Portable-1.0.1-x64.exe) | Running without installation | Save the executable in a folder or on a USB drive, then launch it directly. |
+| [**Windows installer — x64**](https://github.com/mugglenistam/Cono/releases/download/v1.0.3/Cono-Setup-1.0.3-x64.exe) | Installing or updating Cono | Close Cono, run the setup wizard, and choose an installation folder. |
 
-You only need one version. Both contain the same player features.
-
-The portable executable stores settings and playback history in your Windows user profile; those settings do not travel with the executable.
+Version 1.0.3 is distributed as an installer. A portable executable can also be built from source using the instructions below.
 
 **Signing:** Release executables are currently unsigned. Windows may display an unknown-publisher or SmartScreen prompt.
 
 See [all releases](https://github.com/mugglenistam/Cono/releases) for downloads and release notes.
+
+## What's new in 1.0.3
+
+- **Independent playback positions:** switching files no longer carries the previous file's timestamp into the new file.
+- **Video resume choices:** unfinished videos pause at a **Continue** / **Start from beginning** prompt. Music always starts at zero, including tracks with older saved positions.
+- **Return to your list:** a dedicated **Back to list** button preserves the current folder or playlist, search, and scroll position while playback continues.
+- **Browser playback links:** support for `cono://` and VLC-style `vlc://` links, already-running application handoff, and downloaded M3U media lists.
+- **Online media:** bounded link inspection, redirect handling, website-session cookies, and HTTP range streaming for compatible MKV and other supported media.
+- **A dedicated music view:** artwork, track information, shuffle/repeat controls, and an up-next list.
+- **More usable controls:** perceptual volume adjustment and fullscreen layouts that keep the title bar and navigation from overlapping.
+
+See the [changelog](CHANGELOG.md) for release details and verification notes.
 
 ## Features
 
@@ -42,11 +51,13 @@ See [all releases](https://github.com/mugglenistam/Cono/releases) for downloads 
 - Grid, list, and detail views with file durations and available file information.
 - Search, sorting, watched status, and playback progress.
 - Back and forward navigation between library locations.
+- Each file starts independently. Unfinished videos offer **Continue** or **Start from beginning**; music always starts at zero.
 - An expandable navigation menu and a compact library beside the player.
 - Create playlists, manage the playback queue, and drag files into the app.
 
 ### Music with a visual timeline
 
+- A dedicated listening view with album artwork, track/artist/album information, an up-next queue, and shuffle/repeat controls.
 - Audio waveforms displayed behind the seek bar for local audio files.
 - The played portion of the waveform follows your selected accent color.
 - Embedded album artwork in the library and during playback.
@@ -57,10 +68,11 @@ See [all releases](https://github.com/mugglenistam/Cono/releases) for downloads 
 
 ### Playback controls within reach
 
-- Resume playback, shuffle, repeat, and automatic advancement through the queue.
+- A choice to resume unfinished videos, shuffle, repeat, and automatic advancement through the queue.
 - Playback speed from **0.25× to 4×**.
 - Bookmarks, a sleep timer, and screenshots from video frames.
 - Fullscreen playback with controls that appear near the screen edges.
+- Fullscreen library, music and settings views reserve space for the top and bottom bars so navigation remains accessible.
 - Picture-in-picture when supported by the media and playback environment.
 - Adjust brightness, contrast, saturation, rotation, flipping, zoom, and aspect ratio.
 
@@ -83,6 +95,7 @@ See [all releases](https://github.com/mugglenistam/Cono/releases) for downloads 
 3. Use **Add item** in the library to add a music or video folder, create a playlist, or add a network stream.
 4. Use the sidebar button to expand or collapse navigation. While playing media, it can show a compact library beside the player.
 5. Open playback settings for subtitles, audio, video, and playback options. Use **Ctrl+P** for the full settings dialog.
+6. During playback, use **Back to list** to return to the same location. Unfinished videos ask whether to continue or start over; this can be disabled in **Settings → Privacy**.
 
 ## Media support and limitations
 
@@ -95,7 +108,17 @@ Cono uses **Chromium's media engine**, rather than libVLC or mpv. A filename ext
 | Network | Direct audio/video URLs supported by Chromium; M3U playlists with playable direct-media entries. |
 | Subtitles | SRT and VTT text subtitles; basic ASS/SSA dialogue parsing. Full ASS styling and effects are not implemented. |
 
-Current limits:
+### Network playback
+
+Online MKV playback works when the file's video/audio codecs are supported. Cono follows redirects and recognizes filenames in download-link query parameters. It inspects a bounded prefix rather than downloading a whole movie as text, and forwards media range requests through a local streaming bridge. Website login/subscription pages are reported separately from media-format errors. If access is required, use **Open website** to sign in through Cono's website window, then retry the link. A valid account or subscription is still required; Cono does not bypass website access restrictions.
+
+Cono accepts `cono://open?url=<encoded HTTP URL>` and VLC-style `vlc://https://…` links. The Windows installer registers both schemes; portable and development builds can register them under **Settings → General → Browser playback → Use Cono**. This can replace VLC as the handler for website player links. If Windows already has a default, choose Cono for the `VLC` link type in Windows Default apps. Launching a link starts playback in a new or already-running Cono instance. Downloaded `.m3u`/`.m3u8` media lists can also open in Cono; HLS manifests remain unsupported.
+
+Website buttons can use different launch mechanisms. Tests cover direct VLC links and the blank-popup handoff pattern using a local website fixture; authenticated third-party player buttons have not been verified end to end. Signing in through Cono's website window allows supported player links to use that website session. An existing sign-in in a separate browser is not automatically shared with Cono.
+
+During playback, **Back to list** returns to the same folder or playlist, preserving search and scroll position while playback continues. The title-bar Back button first returns to this list; subsequent clicks navigate folder history. Volume uses a perceptual taper, with the same scale for dragging, keyboard shortcuts, mouse wheel, and saved settings.
+
+### Current limits
 
 - AVI, WMV, DTS audio, and HLS/M3U8 streams are not supported in this release.
 - Audio delay and manual audio-track switching are not implemented.
@@ -169,12 +192,18 @@ The generated files are placed in `dist/`:
 
 ```text
 dist/
-├── Cono Setup 1.0.1.exe     # Windows installer
-├── Cono 1.0.1.exe           # Portable executable
+├── Cono Setup 1.0.3.exe     # Windows installer
+├── Cono 1.0.3.exe           # Portable executable
 └── win-unpacked/            # Unpacked application bundle
 ```
 
-`--publish never` creates local artifacts without uploading them. Release assets use explicit `Setup`, `Portable`, and `x64` names on GitHub so the two downloads are easy to distinguish.
+`--publish never` creates local artifacts without uploading them. Installer and portable builds can use explicit `Setup`, `Portable`, and `x64` names when attached to a GitHub Release.
+
+To build only the installer with the same name used in the current release:
+
+```powershell
+node node_modules/electron-builder/out/cli/cli.js --win nsis --x64 --publish never '-c.nsis.artifactName=Cono-Setup-${version}-x64.${ext}'
+```
 
 The `dist/` and `node_modules/` directories are excluded from source control. Upload distributable executables as **GitHub Release assets**.
 
@@ -196,11 +225,17 @@ Run the self-contained Electron regression checks:
 node test/ui-regressions.js
 node test/audio-media.js
 node test/video-subtitles.js
+node test/network-playback.js
+node test/browser-links.js
+node test/resume-playback.js
 ```
 
 - **UI checks:** sidebar behavior, navigation history, volume colors and clipping, dragging, mute, keyboard input, and window sizes.
 - **Audio checks:** generated stereo fixtures, embedded and fallback artwork, durations in library views and playlists, waveform progress and accent colors, and cleanup when switching to video.
 - **Video checks:** generated long-GOP MKV with embedded English SRT and Persian ASS, subtitle selection and timing, exact and repeated seeks, resumed video frames, and the SubDL entry point.
+- **Network checks:** HTTP MKV frames and seeking, redirects and query-string download URLs, session cookies, bounded inspection, M3U playlists, and subscription-page detection.
+- **Browser launch checks:** URL validation, real application startup and already-running handoff, downloaded playlists, and a website that opens a blank popup before assigning its VLC link. Uses isolated application data and does not modify Windows protocol registrations.
+- **Resume checks:** separate per-video positions, zero start for new files and music, both resume choices, persisted positions, completed videos, and changing files while a resume dialog is open.
 
 The audio checks can also target a packaged application:
 
@@ -224,8 +259,10 @@ src/
 ├── player.js              Playback, waveforms, subtitles, and media effects
 ├── library.js             Library navigation and media views
 ├── media.js               Shared artwork and duration loading
-├── audio-metadata.cjs     Embedded artwork extraction
+├── audio-metadata.cjs     Embedded artwork and audio tag extraction
 ├── embedded-subtitles.cjs Embedded subtitle inspection and extraction
+├── network-media.cjs      Bounded link resolution and HTTP range streaming
+├── launch-input.cjs       External media-link validation and launch arguments
 ├── panels.js              Playback controls, side panels, and queue
 ├── dialogs.js             Settings, onboarding, dialogs, and shortcuts
 ├── icons.js               Interface icons and app-logo markup

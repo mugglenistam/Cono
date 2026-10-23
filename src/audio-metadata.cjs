@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { nativeImage } = require('electron');
 const covers = new Map();
+const details = new Map();
 let parser;
 
 async function readAudioCover(file) {
@@ -29,4 +30,19 @@ async function readAudioCover(file) {
   } catch { return null; }
 }
 
-module.exports = { readAudioCover };
+async function readAudioInfo(file) {
+  if (typeof file !== 'string' || !/\.(mp3|flac|wav|ogg|m4a|opus|aac)$/i.test(file)) return null;
+  try {
+    const stat = await fs.stat(file), key = `${path.resolve(file)}:${stat.size}:${stat.mtimeMs}`;
+    if (!details.has(key)) {
+      details.set(key, (async () => {
+        const { parseFile } = await (parser ||= import('music-metadata'));
+        const { common, format } = await parseFile(file, { skipCovers: true, duration: false });
+        return { title: common.title || '', artist: common.artist || '', album: common.album || '', year: common.year || null, duration: format.duration || null };
+      })().catch(() => null));
+      if (details.size > 64) details.delete(details.keys().next().value);
+    }
+    return details.get(key);
+  } catch { return null; }
+}
+module.exports = { readAudioCover, readAudioInfo };

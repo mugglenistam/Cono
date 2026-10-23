@@ -10,9 +10,10 @@ if (!process.versions.electron || process.type !== 'browser') {
   const path = require('node:path');
   const appRoot = process.env.CONO_APP_ROOT || path.join(__dirname, '..');
   const { pathToFileURL } = require('node:url');
-  const { readAudioCover } = require(path.join(appRoot, 'src/audio-metadata.cjs'));
+  const { readAudioCover, readAudioInfo } = require(path.join(appRoot, 'src/audio-metadata.cjs'));
   app.commandLine.appendSwitch('force-device-scale-factor', '1');
   app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+  ipcMain.handle('open:ready', () => []);
   const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'vlc-audio-test-'));
   function chunk(name, bytes) {
     const header = Buffer.alloc(8); header.write(name); header.writeUInt32LE(bytes.length, 4);
@@ -29,7 +30,11 @@ if (!process.versions.electron || process.type !== 'browser') {
     if (cover) {
       const picture = Buffer.concat([Buffer.from([0]), Buffer.from('image/png\0'), Buffer.from([3, 0]), cover]);
       const frame = Buffer.alloc(10); frame.write('APIC'); frame.writeUInt32BE(picture.length, 4);
-      const body = Buffer.concat([frame, picture]), header = Buffer.from('49443303000000000000', 'hex');
+      const tags = [['TIT2', 'Golden Hour'], ['TPE1', 'Cono Artist'], ['TALB', 'Night Sessions']].map(([id, value]) => {
+        const text = Buffer.concat([Buffer.from([0]), Buffer.from(value)]), tag = Buffer.alloc(10);
+        tag.write(id); tag.writeUInt32BE(text.length, 4); return Buffer.concat([tag, text]);
+      });
+      const body = Buffer.concat([frame, picture, ...tags]), header = Buffer.from('49443303000000000000', 'hex');
       for (let i = 0; i < 4; i++) header[9 - i] = (body.length >>> (7 * i)) & 127;
       chunks.push(chunk('id3 ', Buffer.concat([header, body])));
     }
@@ -44,6 +49,7 @@ if (!process.versions.electron || process.type !== 'browser') {
   ipcMain.handle('store:get', () => ({ settings: { onboarded: true, autoSubs: false, history: false, keepQueue: false, waveform: false } }));
   ipcMain.handle('store:set', () => true);
   ipcMain.handle('media:cover', (_e, file) => readAudioCover(file));
+  ipcMain.handle('media:audioInfo', (_e, file) => readAudioInfo(file));
   ipcMain.handle('fs:scan', () => ({ folders: [], files: items }));
   app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: 1280, height: 780, webPreferences: {
@@ -100,8 +106,20 @@ if (!process.versions.electron || process.type !== 'browser') {
       assert.ok(colors[1].includes('90,90,90') && !colors[1].includes('18,171,52'), 'unplayed waveform is neutral');
       await run(`playIndex(1)`);
       await waitFor(`$('.art-cover').src.startsWith('data:') && S.peaks?.length > 0 && V().duration > 0`, 'embedded artwork during playback');
+      await waitFor(`$('.art-title').textContent === 'Golden Hour' && $('.art-artist').textContent === 'Cono Artist' && $('.art-album').textContent === 'Night Sessions'`, 'music metadata');
+      assert.equal(await run(`$('#app').classList.contains('music-mode')`), true, 'dedicated music view');
+      await run(`V().pause(); $('#musicShuffle').click()`);
+      assert.equal(await run(`cfg().shuffle && V().paused`), true, 'music actions do not toggle playback');
+      await run(`$('#musicShuffle').click(); enqueue([S.queue[0]])`);
+      await waitFor(`$$('#musicNext .music-track').length > 0`, 'up-next list updates');
       await run(`V().pause(); V().currentTime = V().duration * .45; updateTimes()`);
       await run(`showLibrary(true, 'compact')`);
+      assert.equal(await run(`$('#artwork').scrollWidth <= $('#artwork').clientWidth`), true, 'music has no horizontal overflow');
+      await run(`setFullscreenState(true); onMouseMove({clientY:1})`);
+      assert.equal(await run(`$('#artwork').getBoundingClientRect().top >= $('#titlebar').getBoundingClientRect().bottom && $('#artwork').getBoundingClientRect().bottom <= $('#controls').getBoundingClientRect().top`), true, 'fullscreen music is between the bars');
+      await run(`setFullscreenState(false); cfg().theme = 'light'; applyTheme()`);
+      assert.equal(await run(`getComputedStyle($('.art-title')).color`), 'rgb(31, 31, 31)', 'music text follows light theme');
+      await run(`cfg().theme = 'dark'; applyTheme()`);
       await waitFor(`$$('#libPanel .dur').length === 2 && $$('#libPanel .dur').every(el => el.textContent === '00:02')`, 'compact grid durations');
       await new Promise(resolve => setTimeout(resolve, 200));
       fs.writeFileSync(path.join(dir, 'audio-playback.png'), (await win.webContents.capturePage()).toPNG());

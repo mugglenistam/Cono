@@ -1,7 +1,7 @@
 {
   "name": "cono",
   "productName": "Cono",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Cono — a modern audio and video player for Windows",
   "main": "main.js",
   "scripts": {
@@ -16,10 +16,12 @@
   "build": {
     "appId": "com.mugglenistam.cono",
     "productName": "Cono",
+    "protocols": [{ "name": "Cono media link", "schemes": ["cono", "vlc"] }],
     "asarUnpack": ["node_modules/ffmpeg-static/ffmpeg*", "node_modules/@ffprobe-installer/**/ffprobe*"],
     "files": ["main.js", "preload.js", "src/**/*", "package.json"],
     "fileAssociations": [
-      { "ext": ["mp4","mkv","webm","mov","m4v","mp3","flac","wav","ogg","m4a","opus"], "name": "Media file", "role": "Viewer" }
+      { "ext": ["mp4","mkv","webm","mov","m4v","mp3","flac","wav","ogg","m4a","opus"], "name": "Media file", "role": "Viewer" },
+      { "ext": ["m3u", "m3u8"], "name": "Media playlist", "role": "Viewer" }
     ],
     "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico" },
     "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }

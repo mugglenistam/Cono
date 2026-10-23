@@ -35,8 +35,23 @@
     <section id="stage">
       <div id="library" class="hidden"></div>
       <div id="player">
+        <button id="btnReturnList" class="player-return hidden" title="Back to list" aria-label="Back to list"><i data-ico="back"></i><span>Back to list</span></button>
         <video id="video" preload="auto"></video>
-        <div id="artwork" class="hidden"><img class="art-cover" src="assets/audio-fallback.jpg" alt="Album cover"><div class="art-title"></div></div>
+        <div id="artwork" class="hidden">
+          <img class="music-backdrop" src="assets/audio-fallback.jpg" alt="" aria-hidden="true">
+          <div class="music-shell">
+            <div class="music-heading"><span class="music-eyebrow">NOW PLAYING</span><span class="music-status">Music</span></div>
+            <div class="music-hero">
+              <div class="music-cover-wrap"><img class="art-cover" src="assets/audio-fallback.jpg" alt="Album cover"></div>
+              <div class="music-info"><span class="music-eyebrow">YOUR LISTENING SPACE</span><h1 class="art-title"></h1><div class="art-artist"></div><div class="art-album"></div><div class="music-actions">
+                <button class="btn ghost" id="musicShuffle" title="Shuffle" aria-label="Shuffle" data-ico="shuffle">Shuffle</button>
+                <button class="btn ghost" id="musicRepeat" title="Repeat" aria-label="Repeat" data-ico="repeat">Repeat</button>
+                <button class="btn ghost" id="musicQueue" data-ico="queue">Queue</button>
+              </div></div>
+            </div>
+            <div class="music-next"><div class="music-next-head"><h2>Up next</h2><button class="btn ghost" id="musicViewQueue">View queue</button></div><div id="musicNext"></div></div>
+          </div>
+        </div>
         <div id="subs"></div>
         <div id="metaCard" class="hidden"></div>
         <div id="osd"></div>

@@ -18,6 +18,24 @@ async function openCapture() {
 }
 async function openClipboard() { try { const t = (await navigator.clipboard.readText()).trim(); if (/^https?:\/\//.test(t)) playStream({ name: t.split('/').pop() || t, url: t }); else toast('Clipboard does not contain a link'); } catch { toast('Cannot read the clipboard'); } }
 
+async function openExternalInputs(inputs) {
+  const urls = inputs.filter(p => /^https?:\/\//i.test(p));
+  const paths = inputs.filter(p => !/^https?:\/\//i.test(p));
+  if (paths.length) {
+    const info = await api.describe(paths), items = [];
+    for (const item of info) {
+      if (item.dir) items.push(...item.files);
+      else if (/\.m3u8?$/i.test(item.name)) {
+        const text = await api.readText(item.path);
+        if (text?.includes('#EXT-X-')) { toast('HLS playlists are not supported yet.'); continue; }
+        if (text) items.push(...parseM3U(text, item.url));
+      } else if (MEDIA_RE.test(item.name || '')) items.push(item);
+    }
+    if (items.length) playItems(items, 0);
+  }
+  if (urls.length) await playStream({ url: urls[0] });
+}
+
 /* ---------- menus ---------- */
 function appMenu(el) {
   const hk = cfg().hotkeys, kb = k => k.replace('Ctrl', 'Ctrl');
@@ -135,13 +153,17 @@ function settingsDialog(startCat) {
       const sw = h('div', { class: 'swatches' }, ACCENTS.map(a => h('button', { class: 'swatch' + (c.accent === a ? ' on' : ''), style: { background: a }, onclick: () => { c.accent = a; save(); applyTheme(); drawWave(); $$('.swatch', sw).forEach(x => x.classList.toggle('on', x.style.background && x === event.currentTarget)); } })));
       b.append(row('Accent colour', sw, 'Change the orange to any colour you like'), row('Custom colour', h('input', { type: 'color', value: c.accent, oninput: e => { c.accent = e.target.value; save(); applyTheme(); } })));
       b.append(h('h4', {}, 'Startup'), h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => onboarding() }, 'Show welcome screen')));
+      if (hasApi && api.registerBrowserLinks) b.append(h('h4', {}, 'Browser playback'), row('Open website player links in Cono', h('button', { class: 'btn', onclick: async () => {
+        const result = await api.registerBrowserLinks();
+        toast(result.every(x => x.registered) ? 'Cono registered for Cono and VLC links. Windows may ask you to choose a default app.' : 'Windows could not register every link. Install Cono and choose it as the default for VLC links.');
+      } }, 'Use Cono'), 'Registers cono:// and vlc:// links for this Windows account. This can replace VLC as the handler for website player links.'));
     }],
     Interface: [{ icon: 'sidebar' }, b => {
       b.append(h('h4', {}, 'Window'), tog('ontop', 'Keep window on top', null, on => hasApi && api.onTop(on)), tog('dblFs', 'Double-click video toggles fullscreen'), tog('clickPlay', 'Click video to play / pause'));
       b.append(h('h4', {}, 'Controls'), tog('autoHide', 'Hide bars in fullscreen until the mouse is near them', 'The top and bottom bars appear when you move to the edge of the screen'), tog('thumbs', 'Show preview thumbnail when seeking'));
     }],
     Privacy: [{ icon: 'lock' }, b => {
-      b.append(h('h4', {}, 'History'), tog('history', 'Remember recently played files'), tog('keepQueue', 'Remember the queue between sessions'), tog('resume', 'Resume files where I left off'));
+      b.append(h('h4', {}, 'History'), tog('history', 'Remember recently played files'), tog('keepQueue', 'Remember the queue between sessions'), tog('resume', 'Ask to resume unfinished videos', 'Music always starts from the beginning'));
       b.append(h('div', { class: 'row' }, h('button', { class: 'btn ghost', onclick: () => { st.recents = []; save(); renderLib(); toast('History cleared'); } }, 'Clear history'), h('button', { class: 'btn ghost', onclick: () => { st.resume = {}; save(); toast('Resume points cleared'); } }, 'Clear resume points')));
     }],
     Controls: [{ icon: 'mouse' }, b => {
@@ -211,13 +233,14 @@ function onboarding() {
 /* ---------- keyboard ---------- */
 const ACTIONS = {
   playpause: togglePlay, seekfwd: () => seekBy(cfg().seekShort), seekback: () => seekBy(-cfg().seekShort), seekfwdL: () => seekBy(cfg().seekLong), seekbackL: () => seekBy(-cfg().seekLong),
-  volup: () => setVolume(V().volume + .05), voldown: () => setVolume(V().volume - .05), mute: toggleMute, fullscreen: () => toggleFullscreen(), next, prev, bookmark: () => addBookmark(),
+  volup: () => setVolume(volumeLevel() + .05), voldown: () => setVolume(volumeLevel() - .05), mute: toggleMute, fullscreen: () => toggleFullscreen(), next, prev, bookmark: () => addBookmark(),
   subdelayminus: () => setSubDelay(S.store.sub.delay - .1), subdelayplus: () => setSubDelay(S.store.sub.delay + .1), speedup: () => setSpeed(V().playbackRate + .25), speeddown: () => setSpeed(V().playbackRate - .25), speedreset: () => setSpeed(1),
   hideui: toggleHideUI, open: () => openFilesDialog(), queue: () => togglePanel('queue'), settings: () => settingsDialog(), screenshot, frameNext: () => stepFrame(1), framePrev: () => stepFrame(-1), library: () => showLibrary(S.view !== 'library', 'full'),
 };
 function onKey(e) {
   if (e.target.matches('input,textarea,select') || e.defaultPrevented) return;
-  if (e.key === 'Escape') { if (S.fullscreen) toggleFullscreen(false); else if (S.view === 'library' && S.cur) showLibrary(false, 'full'); return; }
+  if (resumePrompt) { if (e.key === 'Escape') { e.preventDefault(); resumePrompt.close(); } return; }
+  if (e.key === 'Escape') { if (S.fullscreen) toggleFullscreen(false); else if (S.view !== 'library') returnToList(); else if (S.cur) showLibrary(false, 'full'); return; }
   const combo = comboFromEvent(e); if (!combo) return;
   const id = Object.keys(cfg().hotkeys).find(k => cfg().hotkeys[k] === combo); if (!id) return;
   if (e.ctrlKey && id === 'open') e.preventDefault();
@@ -230,11 +253,12 @@ let idleT;
 function barsOff(off) { $('#app').classList.toggle('bars-off', off); }
 function kickIdle() {
   const a = $('#app'); a.classList.remove('cursor-off'); clearTimeout(idleT);
-  if (S.fullscreen) idleT = setTimeout(() => a.classList.add('cursor-off'), 2600);
+  if (S.fullscreen && !a.classList.contains('workspace-view')) idleT = setTimeout(() => a.classList.add('cursor-off'), 2600);
 }
 function onMouseMove(e) {
   kickIdle();
   if (S.hideui) return barsOff(true);
+  if ($('#app').classList.contains('workspace-view')) return barsOff(false);
   if (!S.fullscreen || !cfg().autoHide) return barsOff(false);
   const nearTop = e.clientY < 90, nearBottom = e.clientY > innerHeight - 110;
   barsOff(!(nearTop || nearBottom || $('#menuLayer').firstChild || $('#modalLayer').firstChild));
@@ -243,24 +267,28 @@ function onMouseMove(e) {
 /* ---------- init ---------- */
 async function init() {
   await loadStore(); applyTheme(); hydrateIcons();
-  const v = V(); v.volume = cfg().volume; v.muted = cfg().muted;
+  const v = V(); v.volume = volumeGain(volumeLevel()); v.muted = cfg().muted;
   renderControls(); initSeek(); initSubTimelineDrag(); applySubStyle(); applyStrip(); renderLib();
+  $('#musicShuffle').onclick = () => { CTL.shuffle.act(); updateMusicState(); };
+  $('#musicRepeat').onclick = () => { CTL.repeat.act(); updateMusicState(); };
+  $('#musicQueue').onclick = $('#musicViewQueue').onclick = () => togglePanel('queue');
   const A = $('#app');
   $('#btnMenu').onclick = e => appMenu(e.currentTarget);
   $('#btnLib').onclick = toggleLibrarySidebar;
   $('#btnBack').onclick = () => libBack(-1);
   $('#btnForward').onclick = () => libBack(1);
-  $('#btnFolder').onclick = () => showLibrary(S.view !== 'library', 'full');
+  $('#btnReturnList').onclick = returnToList;
+  $('#btnFolder').onclick = () => S.view === 'library' ? showLibrary(false, 'full') : returnToList();
   $('#btnLogo').onclick = () => { libGo('home'); showLibrary(true, 'full'); };
   $('#btnFs').onclick = () => toggleFullscreen(); $('#btnPip').onclick = togglePip;
   $('#wMin').onclick = () => hasApi && api.minimize(); $('#wMax').onclick = () => hasApi && api.maximize(); $('#wClose').onclick = () => hasApi ? api.close() : window.close();
-  if (hasApi) { api.onState(s => { if ('fullscreen' in s) setFullscreenState(s.fullscreen); if ('maximized' in s) { S.maximized = s.maximized; $('#wMax').innerHTML = ico(s.maximized ? 'restore' : 'max'); } }); api.onOpen(async paths => { const info = await api.describe(paths); const items = info.flatMap(x => x.dir ? x.files : [x]).filter(x => MEDIA_RE.test(x.name || '')); if (items.length) playItems(items, 0); }); }
+  if (hasApi) { api.onState(s => { if ('fullscreen' in s) setFullscreenState(s.fullscreen); if ('maximized' in s) { S.maximized = s.maximized; $('#wMax').innerHTML = ico(s.maximized ? 'restore' : 'max'); } }); api.onOpen(openExternalInputs); }
   document.addEventListener('fullscreenchange', () => { if (!hasApi) setFullscreenState(!!document.fullscreenElement); });
   document.addEventListener('keydown', onKey); document.addEventListener('mousemove', onMouseMove);
   $('#stage').addEventListener('contextmenu', contextMenu);
-  $('#player').addEventListener('click', e => { if (e.target.closest('#subs,#metaCard')) return; if (cfg().clickPlay && S.cur) togglePlay(); else if (!S.cur) openFilesDialog(); });
-  $('#player').addEventListener('dblclick', () => { if (cfg().dblFs) toggleFullscreen(); });
-  $('#player').addEventListener('wheel', e => { const w = cfg().wheel; if (w === 'volume') setVolume(V().volume + (e.deltaY < 0 ? .05 : -.05)); else if (w === 'seek') seekBy(e.deltaY < 0 ? cfg().seekShort : -cfg().seekShort); }, { passive: true });
+  $('#player').addEventListener('click', e => { if (e.target.closest('button,#subs,#metaCard,#artwork')) return; if (cfg().clickPlay && S.cur) togglePlay(); else if (!S.cur) openFilesDialog(); });
+  $('#player').addEventListener('dblclick', e => { if (!e.target.closest('button,#artwork') && cfg().dblFs) toggleFullscreen(); });
+  $('#player').addEventListener('wheel', e => { if (e.target.closest('#artwork')) return; const w = cfg().wheel; if (w === 'volume') setVolume(volumeLevel() + (e.deltaY < 0 ? .05 : -.05)); else if (w === 'seek') seekBy(e.deltaY < 0 ? cfg().seekShort : -cfg().seekShort); }, { passive: true });
   v.addEventListener('click', () => {});
   // drag & drop
   let dc = 0; const hint = $('#dropHint');
@@ -277,5 +305,8 @@ async function init() {
   showLibrary(true, 'full');
   if (!cfg().onboarded) onboarding();
   window.__ready = true;
+  if (hasApi && api.readyForOpen) {
+    try { await openExternalInputs(await api.readyForOpen()); } catch (error) { toast(error.message || 'Could not open the browser link'); }
+  }
 }
 init();

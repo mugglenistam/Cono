@@ -6,6 +6,7 @@ if (process.versions.electron && process.type === 'browser') {
   const path = require('node:path');
   const fs = require('node:fs');
   const os = require('node:os');
+  const appRoot = process.env.CONO_APP_ROOT || path.join(__dirname, '..');
   app.commandLine.appendSwitch('force-device-scale-factor', '1');
   app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: 1280, height: 780,
@@ -17,7 +18,7 @@ if (process.versions.electron && process.type === 'browser') {
       await new Promise(resolve => setTimeout(resolve, 150));
     };
     try {
-      await win.loadFile(path.join(__dirname, '../src/index.html'));
+      await win.loadFile(path.join(appRoot, 'src/index.html'));
       for (let i = 0; i < 100 && !await run('window.__ready === true'); i++) {
         await new Promise(resolve => setTimeout(resolve, 20));
       }
@@ -25,7 +26,7 @@ if (process.versions.electron && process.type === 'browser') {
       await run(`$('#modalLayer').replaceChildren(); $('#modalLayer').style.pointerEvents = 'none'`);
       const check = async (code, label) => {
         const actual = await run(code);
-        if (!actual) console.error(await run(`JSON.stringify({ view: S.view, open: S.libOpen, collapsed: S.libNavCollapsed, nav: $$('.lib-nav').map(e => e.getBoundingClientRect().width), library: $('#library').className, panel: $('#libPanel').className })`));
+        if (!actual) console.error(await run(`JSON.stringify({ view: S.view, open: S.libOpen, collapsed: S.libNavCollapsed, nav: $$('.lib-nav').map(e => e.getBoundingClientRect().width), library: $('#library').className, panel: $('#libPanel').className, app:$('#app').className, main:$('#main').getBoundingClientRect().toJSON(), title:$('#titlebar').getBoundingClientRect().toJSON(), bar:$('.lib-bar')?.getBoundingClientRect().toJSON() })`));
         assert.equal(actual, true, label);
       };
       await check(`$('#btnBack').disabled && $('#btnForward').disabled`, 'initial history limits');
@@ -48,12 +49,24 @@ if (process.versions.electron && process.type === 'browser') {
       await run(`$('#btnFolder').click()`);
       await check(`!S.libOpen && $('#libPanel').classList.contains('hidden') && !$('#library').classList.contains('hidden')`, 'full library closes compact copy');
       await run(`showLibrary(false, 'full'); $('#btnBack').click()`);
-      await check(`S.view === 'library' && L.section === 'videos'`, 'app bar history opens hidden library');
+      await check(`S.view === 'library' && L.section === 'recent'`, 'app bar returns to current list before changing folders');
+      await run(`$('#btnBack').click()`);
+      await check(`L.section === 'videos'`, 'back changes folders after returning to list');
+      await run(`S.store.recents = Array.from({length:80}, (_,i) => ({path:'test'+i+'.mp3',url:'file:///missing'+i+'.mp3',name:'Song '+i+'.mp3',kind:'audio'})); libGo('recent'); L.q = 'Song'; cfg().libView='list'; renderLib()`);
+      await paint();
+      await run(`$('#library .lib-scroll').scrollTop=480; window.returnScroll=$('#library .lib-scroll').scrollTop; window.returnHistory=L.hi; playItems([S.store.recents[0]])`);
+      await check(`S.view === 'player' && !$('#btnReturnList').classList.contains('hidden')`, 'explicit return button appears in player');
+      await run(`$('#btnReturnList').click()`); await paint();
+      await check(`S.view === 'library' && L.q === 'Song' && L.hi === returnHistory && Math.abs($('#library .lib-scroll').scrollTop-returnScroll)<2`, 'return button preserves search, history and scroll');
+      await run(`libGo('music','C:\\Music\\Album'); L.q='track'; showLibrary(false,'full'); S.cur={kind:'video'}; $('#btnBack').click()`);
+      await check(`S.view === 'library' && L.path === 'C:\\Music\\Album' && L.q === 'track'`, 'video back preserves same nested folder');
+      await run(`L.q=''; libGo('home'); cfg().libView='grid'; S.cur=null; showLibrary(false,'full')`);
       const colors = [];
       for (const value of [0, .1, .5, 1]) {
         await run(`setVolume(${value}, true)`);
         colors.push(await run(`getComputedStyle($('#cone .fill')).backgroundColor`));
         await check(`Number($('#cone').getAttribute('aria-valuenow')) === ${value * 100} && Math.abs($('#cone .fill').getBoundingClientRect().width - $('#cone').getBoundingClientRect().width * ${value}) < .1`, `volume fill at ${value}`);
+        await check(`Math.abs(V().volume - ${value ** 3}) < .00001`, `perceptual amplitude at ${value}`);
       }
       assert.equal(new Set(colors).size, 4, 'color changes with volume');
       const rgb = color => color.match(/\d+/g).map(Number);
@@ -77,6 +90,12 @@ if (process.versions.electron && process.type === 'browser') {
       await check(`V().muted && $('#cone .fill').style.width === '0%'`, 'mute clears fill');
       await run(`setVolume(.5, true); $('#cone').dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))`);
       await check(`!V().muted && V().volume === 1`, 'keyboard volume and unmute');
+      await run(`setVolume(.5,true); ACTIONS.volup()`);
+      await check(`Math.abs(volumeLevel()-.55)<.00001 && Math.abs(V().volume-.166375)<.00001`, 'hotkey increments slider position, not engine amplitude');
+      await run(`$('#cone').dispatchEvent(new WheelEvent('wheel',{deltaY:100,cancelable:true}))`);
+      await check(`Math.abs(volumeLevel()-.5)<.00001`, 'wheel shares logical volume scale');
+      await run(`toggleMute(); toggleMute(); renderControls()`);
+      await check(`Math.abs(V().volume-.125)<.00001 && $('#cone').getAttribute('aria-valuenow')==='50'`, 'mute and control rebuild retain perceived level');
       for (const width of [760, 1280]) {
         win.setSize(width, 780);
         await check(`$('#btnForward').getBoundingClientRect().right <= $('#btnFolder').getBoundingClientRect().left && $('#cone').getBoundingClientRect().right <= innerWidth`, `controls fit at width ${width}`);
@@ -89,6 +108,22 @@ if (process.versions.electron && process.type === 'browser') {
       await run(`$('#btnLib').click(); setVolume(.15, true)`);
       await paint();
       fs.writeFileSync(path.join(out, 'collapsed.png'), (await win.webContents.capturePage()).toPNG());
+      await run(`S.cur = {kind:'video'}; showLibrary(true, 'full'); setFullscreenState(true)`);
+      for (const width of [760, 1280, 1920]) {
+        win.setSize(width, 780);
+        await run(`onMouseMove({clientY:1})`);
+        await check(`$('#main').getBoundingClientRect().top >= $('#titlebar').getBoundingClientRect().bottom && $('#library .lib-bar').getBoundingClientRect().top >= 40`, `fullscreen workspace clears header at ${width}`);
+        await check(`(() => { const e = $('#library .nav-i'), r = e.getBoundingClientRect(); return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2).closest('.nav-i') === e; })()`, `fullscreen navigation remains clickable at ${width}`);
+        await run(`onMouseMove({clientY:300})`);
+        await check(`!$('#app').classList.contains('bars-off')`, 'workspace controls stay available');
+      }
+      await paint();
+      fs.writeFileSync(path.join(out, 'fullscreen-library.png'), (await win.webContents.capturePage()).toPNG());
+      await run(`showLibrary(false, 'full'); onMouseMove({clientY:300})`);
+      await check(`$('#main').getBoundingClientRect().top === 0 && $('#app').classList.contains('bars-off')`, 'video keeps immersive fullscreen');
+      await run(`openPanel('side', 'video'); onMouseMove({clientY:1})`);
+      await check(`$('#rightPanel').getBoundingClientRect().top >= 40`, 'fullscreen settings panel clears titlebar');
+      await run(`closePanel(); setFullscreenState(false)`);
       console.log('PASS: sidebar, app bar history, volume color/clipping, dragging, mute, keyboard and window sizes.');
       console.log('Screenshots: ' + out);
       app.exit(0);

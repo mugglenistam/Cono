@@ -7,7 +7,11 @@ function itemFromPath(p) {
   const name = baseName(p);
   return { path: p, name, kind: AUDIO_RE.test(name) ? 'audio' : 'video', url: 'file:///' + p.replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:') };
 }
-function itemFromUrl(url, name) { return { url, name: name || decodeURIComponent(url.split('?')[0].split('/').pop() || url), kind: AUDIO_RE.test(url.split('?')[0]) ? 'audio' : 'video', stream: true, path: url }; }
+function itemFromUrl(url, name) {
+  let filename = url;
+  try { const parsed = new URL(url); filename = parsed.searchParams.get('f') || parsed.searchParams.get('filename') || parsed.pathname.split('/').pop() || parsed.hostname; filename = decodeURIComponent(filename); } catch {}
+  return { url, name: name || filename, kind: AUDIO_RE.test(filename) ? 'audio' : 'video', stream: true, path: url };
+}
 const keyOf = it => it.path || it.url;
 
 /* ---------- queue ---------- */
@@ -45,42 +49,87 @@ function prev() { const v = V(); if (v.currentTime > 4) { v.currentTime = 0; ret
 
 /* ---------- loading ---------- */
 let resumeTimer;
-let mediaLoadId = 0, waveAbort;
+let mediaLoadId = 0, waveAbort, loadedMedia = null, resumePrompt = null;
 async function loadCurrent() {
   const v = V(), it = S.cur; if (!it) return;
+  // S.cur already points at the selection; save the item actually in the decoder.
+  saveResume();
   const loadId = ++mediaLoadId;
+  resumePrompt?.close(); resumePrompt = null;
+  loadedMedia = null;
   waveAbort?.abort();
   resetSeek(); resetThumbVideo();
-  saveResume();
+  v.onloadedmetadata = v.onerror = null;
+  v.pause(); v.srcObject = null; v.removeAttribute('src'); v.load();
   S.subTracks = []; S.subIdx = -1; S.subCues = []; S.peaks = null; S.duration = 0;
-  clearSubText();
-  v.srcObject = null;
-  v.src = it.url;
+  clearSubText(); updateTimes();
+  if (it.stream && !it.networkResolved && hasApi && api.resolveMedia) {
+    try {
+      const source = /^https?:/.test(it.path || '') ? it.path : it.url;
+      const result = await api.resolveMedia(source);
+      if (loadId !== mediaLoadId) return;
+      if (result.type === 'page') { showLibrary(true, 'full'); showStreamAccess(result); return; }
+      if (result.type !== 'media') { showLibrary(true, 'full'); toast('Open this playlist from Network to browse its entries.'); return; }
+      it.url = result.playbackUrl || result.url; it.kind = result.kind || it.kind; it.mime = result.mime || ''; it.networkResolved = true;
+    } catch (error) { if (loadId === mediaLoadId) { showLibrary(true, 'full'); toast(error.message || 'Could not open this network link'); } return; }
+  }
+  if (it.stream) it.networkResolved = false;
+  const active = loadedMedia = { item: it, loadId, ready: false, awaitingChoice: false, source: null };
+  const valid = () => loadId === mediaLoadId && S.cur === it && loadedMedia === active;
   v.playbackRate = cfg().rememberSpeed ? cfg().speed : 1;
   if (!cfg().rememberSpeed) cfg().speed = 1;
   $('#artwork').classList.toggle('hidden', it.kind !== 'audio');
+  syncWorkspaceLayout();
   const cover = $('.art-cover');
   cover.src = AUDIO_FALLBACK;
+  $('.music-backdrop').src = AUDIO_FALLBACK;
   cover.onerror = () => { if (cover.getAttribute('src') !== AUDIO_FALLBACK) cover.src = AUDIO_FALLBACK; };
   drawWave();
   if (it.kind === 'audio') {
-    audioCover(it).then(src => { if (loadId === mediaLoadId) cover.src = src; });
+    audioCover(it).then(src => { if (loadId === mediaLoadId) cover.src = $('.music-backdrop').src = src; });
     if (!it.stream) computePeaks(it.url, loadId);
   }
   $('.art-title').textContent = stripExt(it.name);
+  if (it.kind === 'audio') updateMusicMetadata(it, loadId);
   $('#title').textContent = stripExt(it.name);
   $('#folderName').textContent = it.path && !it.stream ? baseName(dirName(it.path)) || 'Library' : (it.stream ? 'Network' : 'Library');
   document.title = stripExt(it.name) + ' — Cono';
   const r = S.store.resume[keyOf(it)];
-  v.onloadedmetadata = () => {
-    S.duration = v.duration; updateTimes();
-    if (cfg().resume && r && r.t > 5 && r.t < v.duration - 8) { v.currentTime = r.t; osd('Resumed at ' + fmt(r.t)); }
-    applyVideoFx(); renderMarks(); updateMeta();
+  const startPlayback = async time => {
+    if (!valid()) return;
+    active.awaitingChoice = false;
+    if (!time) { delete S.store.resume[keyOf(it)]; save(); }
+    v.currentTime = time; updateTimes();
+    try { await v.play(); } catch {}
   };
-  v.onerror = () => { osd('Cannot play this file — format or codec not supported'); toast('Unsupported format: ' + it.name + ' (try MP4/H.264, WebM, MP3, FLAC…)'); };
+  v.onloadedmetadata = () => {
+    if (!valid()) return;
+    v.onloadedmetadata = null;
+    active.ready = true;
+    S.duration = v.duration; updateTimes();
+    applyVideoFx(); renderMarks(); updateMeta();
+    if (it.kind === 'video' && cfg().resume && Number.isFinite(r?.t) && r.t >= 1 && r.t < v.duration - .5) {
+      active.awaitingChoice = true;
+      let settled = false;
+      const choose = time => {
+        if (settled) return;
+        settled = true;
+        if (!valid()) return;
+        resumePrompt = null; startPlayback(time);
+      };
+      resumePrompt = modal({ title: 'Resume video?',
+        body: h('div', {}, h('p', {}, stripExt(it.name)), h('p', { class: 'kbd-hint', style: { marginTop: '12px' } }, 'You stopped at ' + fmt(r.t) + '. Continue watching or start from the beginning?')),
+        buttons: [{ label: 'Start from beginning', action: () => choose(0) }, { label: 'Continue from ' + fmt(r.t), primary: true, action: () => choose(r.t) }],
+        onClose: () => choose(0) });
+      resumePrompt.el.setAttribute('role', 'dialog');
+      resumePrompt.el.setAttribute('aria-modal', 'true');
+      resumePrompt.el.setAttribute('aria-label', 'Resume video?');
+      resumePrompt.el.querySelector('.primary').focus();
+    } else startPlayback(0);
+  };
+  v.onerror = () => { if (valid()) { osd('Cannot play this file — format or codec not supported'); toast('Unsupported format: ' + it.name + ' (try MP4/H.264, WebM, MP3, FLAC…)'); } };
+  v.src = it.url; active.source = v.src; v.load();
   autoLoadSubs(it);
-  try { await v.play(); } catch {}
-  if (loadId !== mediaLoadId) return;
   addRecent(it);
   applyFolderPreset(it);
   renderPanel(); refreshNav();
@@ -92,14 +141,16 @@ function addRecent(it) {
   S.store.recents = r.slice(0, 40); save();
 }
 function saveResume() {
-  const v = V(), it = S.cur; if (!it || !v.duration || !isFinite(v.duration)) return;
-  S.store.resume[keyOf(it)] = { t: v.currentTime, d: v.duration };
-  if (v.currentTime > v.duration - 6) delete S.store.resume[keyOf(it)];
+  const v = V(), active = loadedMedia, it = active?.item;
+  if (!it || !active.ready || active.awaitingChoice || v.currentSrc !== active.source || !Number.isFinite(v.duration) || v.duration <= 0) return;
+  if (it.kind !== 'video' || v.currentTime < 1 || v.ended || v.currentTime >= v.duration - .5) delete S.store.resume[keyOf(it)];
+  else S.store.resume[keyOf(it)] = { t: v.currentTime, d: v.duration };
   save();
 }
 
 /* ---------- transport ---------- */
 function togglePlay() {
+  if (loadedMedia?.awaitingChoice) return;
   const v = V();
   if (!v.src && !S.queue.length) { openFilesDialog(); return; }
   if (!v.src && S.queue.length) { playIndex(Math.max(0, S.idx)); return; }
@@ -119,6 +170,7 @@ function flushSeek() {
   else seekTarget = null;
 }
 function seekTo(time) {
+  if (loadedMedia?.awaitingChoice) return;
   const v = V(); if (!Number.isFinite(v.duration) || v.duration <= 0) return;
   seekTarget = pendingSeek = clamp(time, 0, v.duration);
   // Let the active decode finish instead of restarting it on every repeated key.
@@ -134,19 +186,23 @@ function seekBy(d) {
   const target = clamp((pendingSeek ?? seekTarget ?? v.currentTime) + d, 0, v.duration);
   seekTo(target); osd((d > 0 ? '+' : '') + d + 's  ' + fmt(target));
 }
+// Slider position is perceived loudness; the media engine expects amplitude.
+// A cubic taper gives useful control at low levels and room above the midpoint.
+const volumeGain = x => Math.pow(clamp(Number(x) || 0, 0, 1), 3);
+const volumeLevel = () => clamp(Number(cfg().volume) || 0, 0, 1);
 function setVolume(x, quiet) {
-  const v = V(); x = clamp(x, 0, 1); v.volume = x; cfg().volume = x;
+  const v = V(); x = clamp(Number(x) || 0, 0, 1); cfg().volume = x; v.volume = volumeGain(x);
   if (x > 0 && v.muted) { v.muted = false; cfg().muted = false; }
   updateVolumeUI(); save(); if (!quiet) osd('Volume ' + Math.round(x * 100) + '%');
 }
-function toggleMute() { const v = V(); v.muted = !v.muted; cfg().muted = v.muted; updateVolumeUI(); save(); osd(v.muted ? 'Muted' : 'Volume ' + Math.round(v.volume * 100) + '%'); }
+function toggleMute() { const v = V(); v.muted = !v.muted; cfg().muted = v.muted; updateVolumeUI(); save(); osd(v.muted ? 'Muted' : 'Volume ' + Math.round(volumeLevel() * 100) + '%'); }
 function setSpeed(x) { x = clamp(Math.round(x * 100) / 100, 0.25, 4); V().playbackRate = x; cfg().speed = x; osd('Speed ' + x + '×'); save(); if (S.panel === 'side') renderPanel(); }
 function stepFrame(d) { const v = V(); v.pause(); v.currentTime = Math.max(0, v.currentTime + d / 30); }
 function toggleFullscreen(on) { if (hasApi) api.fullscreen(on); else if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
 function setFullscreenState(on) {
   S.fullscreen = on; $('#app').classList.toggle('fs', on);
   $('#btnFs').innerHTML = ico(on ? 'exitfs' : 'fullscreen');
-  barsOff(false); kickIdle();
+  syncWorkspaceLayout(); barsOff(false); kickIdle();
 }
 function togglePip() { const v = V(); if (document.pictureInPictureElement) document.exitPictureInPicture(); else if (v.requestPictureInPicture && v.src) v.requestPictureInPicture().catch(() => osd('Picture-in-picture unavailable')); }
 function screenshot() {
@@ -159,13 +215,57 @@ function stop() { const v = V(); v.pause(); v.currentTime = 0; }
 /* ---------- time / seek bar ---------- */
 function updateTimes() {
   const v = V();
-  $('#tCur').textContent = fmt(v.currentTime); $('#tDur').textContent = fmt(isFinite(v.duration) ? v.duration : 0);
+  $('#tCur').textContent = fmt(v.currentTime, S.cur?.kind !== 'audio'); $('#tDur').textContent = fmt(isFinite(v.duration) ? v.duration : 0, S.cur?.kind !== 'audio');
   const p = v.duration ? v.currentTime / v.duration : 0;
   $('.seek-played').style.width = p * 100 + '%'; $('.seek-handle').style.left = p * 100 + '%';
   $('#seek').classList.toggle('disabled', !v.duration || !isFinite(v.duration));
   const pb = $('#ctlLeft .play'); if (pb) pb.innerHTML = ico(v.paused ? 'play' : 'pause');
   drawWave();
   drawSubTimeline();
+  updateMusicState();
+}
+
+/* ---------- music listening view ---------- */
+let musicQueueSignature = '';
+async function updateMusicMetadata(item, loadId) {
+  const name = stripExt(item.name), split = name.indexOf(' - ');
+  $('.art-artist').textContent = split > 0 ? name.slice(0, split) : 'Unknown artist';
+  $('.art-title').textContent = split > 0 ? name.slice(split + 3) : name;
+  $('.art-album').textContent = item.stream ? 'Listening online' : 'From your library';
+  musicQueueSignature = ''; updateMusicState();
+  if (item.stream || !hasApi || !api.audioInfo) return;
+  try {
+    const info = await api.audioInfo(item.path);
+    if (!info || loadId !== mediaLoadId || S.cur !== item) return;
+    if (info.title) $('.art-title').textContent = info.title;
+    if (info.artist) $('.art-artist').textContent = info.artist;
+    if (info.album) $('.art-album').textContent = [info.album, info.year].filter(Boolean).join(' · ');
+    if (info.title) { $('#title').textContent = [info.artist, info.title].filter(Boolean).join(' — '); document.title = $('#title').textContent + ' — Cono'; }
+  } catch {}
+}
+function updateMusicState() {
+  if (S.cur?.kind !== 'audio') return;
+  $('.music-status').textContent = V().paused ? 'Paused' : 'Playing';
+  $('#musicShuffle').classList.toggle('on', cfg().shuffle);
+  $('#musicShuffle').setAttribute('aria-pressed', String(cfg().shuffle));
+  $('#musicRepeat').classList.toggle('on', cfg().repeat !== 'off');
+  $('#musicRepeat').setAttribute('aria-label', 'Repeat: ' + cfg().repeat);
+  $('#musicRepeat').title = 'Repeat: ' + cfg().repeat;
+  const signature = JSON.stringify([S.idx, S.queue.map(item => keyOf(item)), cfg().shuffle, cfg().repeat]);
+  if (signature === musicQueueSignature) return;
+  musicQueueSignature = signature;
+  const box = $('#musicNext'); box.replaceChildren();
+  $('.music-next h2').textContent = cfg().shuffle ? 'In your queue' : 'Up next';
+  let indices = S.queue.map((_, i) => i).filter(i => cfg().shuffle ? i !== S.idx : i > S.idx);
+  if (cfg().repeat === 'all' && !cfg().shuffle) indices = indices.concat(S.queue.map((_, i) => i).filter(i => i <= S.idx));
+  if (cfg().repeat === 'one') indices = [S.idx];
+  indices.slice(0, 3).forEach(i => {
+    const item = S.queue[i]; if (!item) return;
+    const image = item.kind === 'audio' ? coverImage('music-track-thumb') : h('span', { class: 'music-track-thumb', html: ico('video') });
+    if (item.kind === 'audio') audioCover(item).then(src => { if (image.isConnected) image.src = src; });
+    box.append(h('button', { class: 'music-track', onclick: () => playIndex(i) }, image, h('span', { class: 'music-track-title', title: item.name }, stripExt(item.name)), durationLabel(item, 'music-track-time')));
+  });
+  if (!box.children.length) box.append(h('p', { class: 'music-empty' }, 'You’re all caught up. Add more music to your queue.'));
 }
 function initSeek() {
   const seek = $('#seek'), v = V(); let drag = false;
@@ -193,6 +293,7 @@ function initSeek() {
   (function loop() { if (!v.paused) renderSubs(); requestAnimationFrame(loop); })();
 }
 function onEnded() {
+  if (!loadedMedia?.ready || loadedMedia.awaitingChoice || !V().ended || V().currentSrc !== loadedMedia.source) return;
   if (S.cur) { S.store.watched = S.store.watched || {}; S.store.watched[keyOf(S.cur)] = 1; delete S.store.resume[keyOf(S.cur)]; save(); }
   if (S.sleepAfter) { S.sleepAfter = false; osd('Sleep timer: stopped'); return; }
   if (cfg().repeat === 'one') { V().currentTime = 0; V().play(); return; }

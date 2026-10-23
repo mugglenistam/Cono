@@ -85,6 +85,13 @@ function save() {
   saveT = setTimeout(() => { try { hasApi ? api.setStore(S.store) : localStorage.setItem('vlcr', JSON.stringify(S.store)); } catch {} }, 250);
 }
 const cfg = () => S.store.settings;
+function syncWorkspaceLayout() {
+  const audio = S.cur?.kind === 'audio';
+  const workspace = S.view === 'library' || S.libOpen || !!S.panel || audio;
+  $('#app').classList.toggle('workspace-view', workspace);
+  $('#app').classList.toggle('music-mode', audio && S.view !== 'library');
+  if (workspace) { barsOff(false); $('#app').classList.remove('cursor-off'); }
+}
 
 /* ---------- OSD + toast ---------- */
 let osdT;

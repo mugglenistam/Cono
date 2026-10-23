@@ -5,6 +5,7 @@ if (!process.versions.electron || process.type !== 'browser') {
   process.exit(result.status ?? 1);
 } else {
   const { app, BrowserWindow, ipcMain } = require('electron');
+  ipcMain.handle('open:ready', () => []);
   const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
   const { execFileSync } = require('node:child_process');
   const { pathToFileURL } = require('node:url');

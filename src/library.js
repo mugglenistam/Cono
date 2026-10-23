@@ -32,6 +32,7 @@ function libGo(section, path = null, push = true) {
   L.section = section; L.path = path; L.q = ''; L.open = null; renderLib();
 }
 function libBack(d) {
+  if (d < 0 && S.view !== 'library') { returnToList(); return; }
   const i = L.hi + d; if (i < 0 || i >= L.hist.length) return;
   L.hi = i; const s = L.hist[i]; libGo(s.section, s.path, false);
   if (S.view !== 'library' && !S.libOpen) showLibrary(true, 'full');
@@ -44,7 +45,10 @@ function toggleLibrarySidebar() {
   } else showLibrary(!S.libOpen, 'compact');
 }
 function updateLibraryButtons() {
-  $('#btnBack').disabled = L.hi <= 0;
+  $('#btnBack').disabled = S.view === 'library' && L.hi <= 0;
+  $('#btnBack').title = S.view === 'library' ? 'Previous folder' : 'Back to list';
+  $('#btnBack').setAttribute('aria-label', $('#btnBack').title);
+  $('#btnReturnList').classList.toggle('hidden', S.view === 'library');
   $('#btnForward').disabled = L.hi >= L.hist.length - 1;
   const expanded = S.view === 'library' ? !S.libNavCollapsed : S.libOpen;
   $('#btnLib').classList.toggle('on', expanded);
@@ -52,6 +56,10 @@ function updateLibraryButtons() {
   $('#btnLib').title = S.view === 'library' ? (expanded ? 'Collapse sidebar' : 'Expand sidebar') : 'Library sidebar';
 }
 function showLibrary(on, mode) {
+  if (S.view === 'library' && ((!on && mode === 'full') || (on && mode === 'compact'))) {
+    L.playbackOrigin = { section: L.section, path: L.path, root: L.root, q: L.q, open: L.open, m3u: L.m3u, musicTab: L.musicTab,
+      hist: L.hist.slice(), hi: L.hi, scroll: $('#library .lib-scroll')?.scrollTop || 0 };
+  }
   if (mode) S.libMode = mode;
   if (mode === 'full') {
     S.view = on ? 'library' : 'player';
@@ -66,7 +74,18 @@ function showLibrary(on, mode) {
   $('#btnFolder').classList.toggle('on', S.view === 'library');
   renderLib(); setTimeout(() => { applySubStyle(); applyVideoFx(); }, 30);
 }
+function returnToList() {
+  if (L.playbackOrigin) {
+    const { scroll, ...origin } = L.playbackOrigin;
+    Object.assign(L, origin); L.pendingScroll = scroll;
+  }
+  showLibrary(true, 'full');
+}
+function restoreListScroll(sc) {
+  if (sc.isConnected && sc._returnScroll != null) sc.scrollTop = sc._returnScroll;
+}
 function renderLib() {
+  syncWorkspaceLayout();
   updateLibraryButtons();
   if (S.view === 'library') { const c = $('#library'); c.innerHTML = ''; c.append(libUI(false)); }
   if (S.libOpen) { const c = $('#libPanel'); c.innerHTML = ''; c.append(libUI(true)); }
@@ -127,12 +146,16 @@ function sortFiles(a) {
 }
 function libContent(compact) {
   const sc = h('div', { class: 'lib-scroll' });
+  if (!compact && L.pendingScroll != null) { sc._returnScroll = L.pendingScroll; delete L.pendingScroll; }
   const sect = L.section;
   if (sect === 'home') homeView(sc, compact);
-  else if (sect === 'videos' || sect === 'music') { if (L.path) folderView(sc, compact); else rootView(sc, sect, compact); }
+  else if (sect === 'videos' || sect === 'music') { if (L.path) folderView(sc, compact).then(() => restoreListScroll(sc)); else rootView(sc, sect, compact); }
   else if (sect === 'network') networkView(sc, compact);
   else if (sect === 'playlists') playlistsView(sc, compact);
   else if (sect === 'recent') { const items = S.store.recents; sc.append(h('div', { class: 'sect-h' }, 'Recent')); itemsView(sc, items.filter(x => !L.q || x.name.toLowerCase().includes(L.q.toLowerCase())), compact, items); }
+  requestAnimationFrame(() => restoreListScroll(sc));
+  // Stop restoring after the user moves the list themselves.
+  sc.addEventListener('wheel', () => { delete sc._returnScroll; }, { passive: true });
   return sc;
 }
 function cardFor(it, ctx, all, compact) {
@@ -183,7 +206,7 @@ function rootView(sc, kind, compact) {
     sc.append(h('div', { class: 'sect-h' }, 'Music'));
     const tabs = h('div', { class: 'chips', style: { marginBottom: '14px' } }, [['folders', 'Folders'], ['songs', 'Songs'], ['albums', 'Albums']].map(([id, n]) => h('button', { class: 'chip' + ((L.musicTab || 'folders') === id ? ' on' : ''), onclick: () => { L.musicTab = id; renderLib(); } }, n)));
     sc.append(tabs);
-    if (L.musicTab === 'songs' || L.musicTab === 'albums') { const box = h('div', {}); sc.append(box); musicAgg(box, L.musicTab, compact, folders); return; }
+    if (L.musicTab === 'songs' || L.musicTab === 'albums') { const box = h('div', {}); sc.append(box); musicAgg(box, L.musicTab, compact, folders).then(() => restoreListScroll(sc)); return; }
   } else sc.append(h('div', { class: 'sect-h' }, 'Videos'));
   const g = h('div', { class: 'grid' }); g.append(addCard); folders.forEach(f => g.append(folderCard(f, compact, { removable: true, sub: 'Library folder' }))); sc.append(g);
 }
@@ -229,17 +252,46 @@ function playlistsView(sc, compact) {
   S.store.playlists.forEach(p => g.append(playlistCard(p))); sc.append(g);
 }
 function streamCard(s) { const c = h('div', { class: 'card folder' }, h('div', { class: 'th', html: ico('network') }), h('div', { class: 'nm' }, s.name), h('div', { class: 'sub' }, s.url.replace(/^https?:\/\//, ''))); c.addEventListener('click', () => playStream(s)); return c; }
+let streamRequestId = 0;
+function showStreamAccess(result) {
+  modal({ title: result.accessRequired ? 'Website access required' : 'This is a web page', body: h('div', {}, h('p', {}, result.message), h('p', { class: 'kbd-hint', style: { marginTop: '12px' } }, 'After signing in, close the website window and try the stream again.')),
+    buttons: [{ label: 'Close' }, { label: 'Open website', primary: true, action: () => hasApi && api.openStreamWebsite ? api.openStreamWebsite(result.url) : window.open(result.url) }] });
+}
 async function playStream(s) {
-  const txt = await (hasApi ? api.fetchText(s.url) : fetch(s.url).then(r => r.text()).catch(() => null));
-  if (txt && /#EXTM3U|#EXTINF/.test(txt) && !/#EXT-X-(STREAM-INF|TARGETDURATION)/.test(txt)) {
-    const items = parseM3U(txt, s.url); if (items.length) { L.m3u = { name: s.name, items }; libGo('network', 'm3u:' + s.name); return; }
-  }
-  if (txt && /#EXT-X-(STREAM-INF|TARGETDURATION)/.test(txt)) toast('HLS (.m3u8) streams need the libVLC engine — not supported in this build');
-  playItems([itemFromUrl(s.url, s.name)], 0);
+  const request = ++streamRequestId, startedAt = mediaLoadId;
+  osd('Opening network media…');
+  try {
+    const result = hasApi && api.resolveMedia ? await api.resolveMedia(s.url) : { type: 'media', url: s.url };
+    if (request !== streamRequestId || startedAt !== mediaLoadId) return;
+    if (result.type === 'page') {
+      showStreamAccess(result);
+      return;
+    }
+    if (result.type === 'playlist') {
+      const items = parseM3U(result.text, result.url); if (!items.length) return toast('This playlist contains no playable entries');
+      L.m3u = { name: s.name, items }; libGo('network', 'm3u:' + s.name); showLibrary(true, 'full'); return;
+    }
+    if (result.type === 'hls') return toast('HLS playlists are not supported yet. Use a direct media link.');
+    const item = itemFromUrl(result.playbackUrl || result.url, s.name || result.filename);
+    item.path = result.sourceUrl || s.url; item.kind = result.kind || item.kind;
+    item.originalUrl = s.url; item.mime = result.mime || ''; item.networkResolved = true;
+    playItems([item], 0);
+  } catch (error) { if (request === streamRequestId) toast(error.message || 'Could not open this network link'); }
 }
 function parseM3U(txt, base) {
   const out = []; let name = null;
-  for (const line of txt.split(/\r?\n/)) { const l = line.trim(); if (!l) continue; if (l.startsWith('#EXTINF')) name = l.split(',').slice(1).join(',').trim(); else if (!l.startsWith('#')) { let u = l; try { u = new URL(l, base).href; } catch {} out.push(itemFromUrl(u, name || undefined)); name = null; } }
+  for (const line of txt.split(/\r?\n/)) {
+    const l = line.trim(); if (!l) continue;
+    if (l.startsWith('#EXTINF')) name = l.split(',').slice(1).join(',').trim();
+    else if (!l.startsWith('#')) {
+      let u; try { u = new URL(l.replace(/\\/g, '/'), base); } catch { name = null; continue; }
+      if (u.protocol === 'file:') {
+        const p = u.hostname ? '\\\\' + u.hostname + decodeURIComponent(u.pathname).replace(/\//g, '\\') : decodeURIComponent(u.pathname).replace(/^\/([a-z]:)/i, '$1').replace(/\//g, '\\');
+        const it = itemFromPath(p); if (name) it.name = name; out.push(it);
+      } else if (/^https?:$/.test(u.protocol)) out.push(itemFromUrl(u.href, name || undefined));
+      name = null;
+    }
+  }
   return out;
 }
 function networkView(sc, compact) {
@@ -252,9 +304,9 @@ function networkView(sc, compact) {
   if (!S.store.streams.length) sc.append(h('div', { class: 'empty' }, 'Paste a direct video/audio link or an .m3u playlist URL (for example a public IPTV list).'));
 }
 function networkDialog() {
-  const url = h('input', { class: 'field w-l', placeholder: 'https://example.com/video.mp4  or  list.m3u' }), name = h('input', { class: 'field w-l', placeholder: 'Name (optional)' });
-  modal({ title: 'Open network stream', body: h('div', { style: { display: 'grid', gap: '10px' } }, url, name, h('div', { class: 'kbd-hint' }, 'Direct MP4/WebM/MP3 links and M3U playlists. The stream is saved to Network.')),
-    buttons: [{ label: 'Cancel' }, { label: 'Play once', action: () => { if (!url.value.trim()) return false; playStream({ name: name.value || url.value, url: url.value.trim() }); } }, { label: 'Save & play', primary: true, action: () => { const u = url.value.trim(); if (!u) return false; const s = { name: name.value.trim() || u.split('/').pop() || u, url: u }; S.store.streams.push(s); save(); playStream(s); } }] });
+  const url = h('input', { class: 'field w-l', placeholder: 'https://example.com/video.mkv  or  list.m3u' }), name = h('input', { class: 'field w-l', placeholder: 'Name (optional)' });
+  modal({ title: 'Open network stream', body: h('div', { style: { display: 'grid', gap: '10px' } }, url, name, h('div', { class: 'kbd-hint' }, 'Direct MKV/MP4/WebM/audio links and M3U playlists. The codecs must be supported. Websites may require you to sign in first.')),
+    buttons: [{ label: 'Cancel' }, { label: 'Play once', action: () => { if (!url.value.trim()) return false; playStream({ name: name.value.trim() || undefined, url: url.value.trim() }); } }, { label: 'Save & play', primary: true, action: () => { const u = url.value.trim(); if (!u) return false; const s = { name: name.value.trim() || itemFromUrl(u).name, url: u }; S.store.streams.push(s); save(); playStream(s); } }] });
   setTimeout(() => url.focus(), 30);
 }
 function newPlaylistDialog() {
